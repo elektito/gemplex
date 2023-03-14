@@ -57,13 +57,39 @@ func ReadGemini(ctx context.Context, client *gemini.Client, u *url.URL) (body st
 	}
 
 	if ok {
-		body, err = ReadBody(resp.Body)
+		code, err = strconv.Atoi(string(resp.Header.Code))
 		if err != nil {
+			err = fmt.Errorf("Invalid response code: %s", resp.Header.Code)
 			return
 		}
 
-		code, _ = strconv.Atoi(string(resp.Header.Code))
-		meta = resp.Header.Meta
+		if code/10 == 1 { // INPUT response
+			err = fmt.Errorf("Requested input with code: %d", code)
+			return
+		}
+
+		if code/10 == 2 { // SUCCESS response
+			if !strings.HasPrefix(resp.Header.Meta, "text/gemini") {
+				err = fmt.Errorf("Not gemtext doc: %s", resp.Header.Meta)
+				return
+			}
+
+			body, err = ReadBody(resp.Body)
+			if err != nil {
+				return
+			}
+			return
+		}
+
+		if code/10 == 3 { // REDIRECT response
+			// return a body with one link (the redirect target)
+			body = "=> " + resp.Header.Meta
+
+			meta = resp.Header.Meta
+			return
+		}
+
+		err = fmt.Errorf("Unacceptable response code: %d", code)
 		return
 	}
 
