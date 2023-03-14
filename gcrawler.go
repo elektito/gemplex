@@ -249,6 +249,23 @@ func coordinator(nprocs int, processorInput []chan string, processorOutputs chan
 	fmt.Println("Exited coordinator")
 }
 
+func seed(inputFile string, channel chan string) {
+	f, err := os.Open(inputFile)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	n := 0
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		channel <- scanner.Text()
+		n++
+	}
+
+	fmt.Printf("Finished seeding with %d URLs.\n", n)
+}
+
 func main() {
 	// Setup an http server to make pprof stats available
 	go func() {
@@ -275,17 +292,7 @@ func main() {
 
 	go coordinator(nprocs, processorInput, processorOutput)
 
-	// seed the crawler from the input file
-	inputFile, err := os.Open("input.txt")
-	if err != nil {
-		panic(err)
-	}
-	defer inputFile.Close()
-
-	scanner := bufio.NewScanner(inputFile)
-	for scanner.Scan() {
-		processorOutput <- scanner.Text()
-	}
+	go seed("input.txt", processorOutput)
 
 	for {
 		nLinks := 0
