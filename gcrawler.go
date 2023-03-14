@@ -21,6 +21,10 @@ import (
 	unorm "github.com/sekimura/go-normalize-url"
 )
 
+type VisitResult struct {
+	links []string
+}
+
 func ReadBody(r io.ReadCloser) (string, error) {
 	buf := new(strings.Builder)
 	_, err := io.Copy(buf, r)
@@ -129,7 +133,7 @@ func GetLinks(doc string, base *url.URL) []string {
 	return links
 }
 
-func process(processorInput chan string, processorOutput chan string) {
+func process(processorInput chan string, processorOutput chan VisitResult) {
 	ctx := context.Background()
 	client := gemini.NewClient()
 
@@ -146,11 +150,14 @@ func process(processorInput chan string, processorOutput chan string) {
 		_, _ = code, meta
 
 		links := GetLinks(body, u)
+		filteredLinks := make([]string, 0)
 		for _, link := range links {
 			if strings.HasPrefix(link, "gemini://") {
-				processorOutput <- link
+				filteredLinks = append(filteredLinks, link)
 			}
 		}
+
+		processorOutput <- VisitResult{filteredLinks}
 
 		time.Sleep(2 * time.Second)
 	}
@@ -193,38 +200,14 @@ func isBlacklisted(link string, parsedLink *url.URL) bool {
 	return false
 }
 
-func coordinator(nprocs int, processorInput []chan string, processorOutputs chan string) {
-	f, err := os.Create("links.txt")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
+type QueueItem struct {
+	link string
+	url  *url.URL
+}
 
-	seen := map[string]bool{}
-	for link := range processorOutputs {
-		if _, ok := seen[link]; ok {
-			continue
-		}
-
-		link, err = normalizeUrl(link)
-		if err != nil {
-			continue
-		}
-
-		u, err := url.Parse(link)
-		if err != nil {
-			continue
-		}
-
-		if u.Scheme != "gemini" {
-			continue
-		}
-
-		if isBlacklisted(link, u) {
-			continue
-		}
-
-		host := u.Hostname()
+func queueLinks(items []QueueItem, processorInput []chan string, nprocs int) {
+	for _, item := range items {
+		host := item.url.Hostname()
 		ips, err := net.LookupIP(host)
 		if err != nil {
 			fmt.Printf("Error resolving host %s: %s\n", host, err)
@@ -234,23 +217,66 @@ func coordinator(nprocs int, processorInput []chan string, processorOutputs chan
 			continue
 		}
 		ip := ips[0]
+		n := int(hashString(ip.String()) % uint64(nprocs))
+		processorInput[n] <- item.link
+	}
+}
 
-		fmt.Println("Adding: ", link)
-		seen[link] = true
+func coordinator(nprocs int, processorInput []chan string, processorOutputs chan VisitResult) {
+	f, err := os.Create("links.txt")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
 
-		n := hashString(ip.String()) % uint64(nprocs)
-		processorInput[n] <- link
+	seen := map[string]bool{}
+	for visitResult := range processorOutputs {
+		toAdd := make([]QueueItem, 0)
+		for _, link := range visitResult.links {
+			if _, ok := seen[link]; ok {
+				continue
+			}
 
-		_, err = f.WriteString(link + "\n")
-		if err != nil {
-			panic(err)
+			link, err = normalizeUrl(link)
+			if err != nil {
+				continue
+			}
+
+			u, err := url.Parse(link)
+			if err != nil {
+				continue
+			}
+
+			if u.Scheme != "gemini" {
+				continue
+			}
+
+			if isBlacklisted(link, u) {
+				continue
+			}
+
+			seen[link] = true
+
+			toAdd = append(toAdd, QueueItem{link, u})
+
+			_, err = f.WriteString(link + "\n")
+			if err != nil {
+				panic(err)
+			}
+
+			if len(toAdd) > 0 {
+				go queueLinks(toAdd, processorInput, nprocs)
+				toAdd = make([]QueueItem, 0)
+			}
 		}
+
+		go queueLinks(toAdd, processorInput, nprocs)
 	}
 
 	fmt.Println("Exited coordinator")
 }
 
-func seed(inputFile string, channel chan string) {
+func seed(inputFile string, channel chan VisitResult) {
 	f, err := os.Open(inputFile)
 	if err != nil {
 		panic(err)
@@ -259,10 +285,12 @@ func seed(inputFile string, channel chan string) {
 
 	n := 0
 	scanner := bufio.NewScanner(f)
+	links := make([]string, 0)
 	for scanner.Scan() {
-		channel <- scanner.Text()
+		links = append(links, scanner.Text())
 		n++
 	}
+	channel <- VisitResult{links}
 
 	fmt.Printf("Finished seeding with %d URLs.\n", n)
 }
@@ -300,7 +328,7 @@ func main() {
 		processorInput[i] = make(chan string, 1000)
 	}
 
-	processorOutput := make(chan string, 10000)
+	processorOutput := make(chan VisitResult, 10000)
 
 	for i := 0; i < nprocs; i += 1 {
 		go process(processorInput[i], processorOutput)
