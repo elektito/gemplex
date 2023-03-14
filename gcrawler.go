@@ -133,12 +133,12 @@ func GetLinks(doc string, base *url.URL) []string {
 	return links
 }
 
-func process(processorInput chan string, processorOutput chan VisitResult) {
+func process(idx int, processorInput chan string, processorOutput chan VisitResult) {
 	ctx := context.Background()
 	client := gemini.NewClient()
 
 	for urlStr := range processorInput {
-		fmt.Println("Processing: ", urlStr)
+		fmt.Printf("[%d] Processing: %s\n", idx, urlStr)
 		u, _ := url.Parse(urlStr)
 
 		body, code, meta, err := ReadGemini(ctx, client, u)
@@ -331,7 +331,7 @@ func main() {
 	processorOutput := make(chan VisitResult, 10000)
 
 	for i := 0; i < nprocs; i += 1 {
-		go process(processorInput[i], processorOutput)
+		go process(i, processorInput[i], processorOutput)
 	}
 
 	go coordinator(nprocs, processorInput, processorOutput)
