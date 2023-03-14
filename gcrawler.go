@@ -267,7 +267,7 @@ func main() {
 		processorInput[i] = make(chan string, 1000)
 	}
 
-	processorOutput := make(chan string, 100000)
+	processorOutput := make(chan string, 10000)
 
 	for i := 0; i < nprocs; i += 1 {
 		go process(processorInput[i], processorOutput)
