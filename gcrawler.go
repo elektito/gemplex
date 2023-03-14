@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"net/url"
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	"github.com/a-h/gemini"
+	unorm "github.com/sekimura/go-normalize-url"
 )
 
 func ReadBody(r io.ReadCloser) (string, error) {
@@ -125,10 +128,11 @@ func GetLinks(doc string, base *url.URL) []string {
 	return links
 }
 
-func process(ctx context.Context, linksToProcess chan string, linksToPossiblyProcess chan string) {
+func process(processorInput chan string, processorOutput chan string) {
+	ctx := context.Background()
 	client := gemini.NewClient()
 
-	for urlStr := range linksToProcess {
+	for urlStr := range processorInput {
 		fmt.Println("Processing: ", urlStr)
 		u, _ := url.Parse(urlStr)
 
@@ -143,15 +147,52 @@ func process(ctx context.Context, linksToProcess chan string, linksToPossiblyPro
 		links := GetLinks(body, u)
 		for _, link := range links {
 			if strings.HasPrefix(link, "gemini://") {
-				linksToPossiblyProcess <- link
+				processorOutput <- link
 			}
 		}
+
+		time.Sleep(2 * time.Second)
 	}
 
 	fmt.Println("Exited processor")
 }
 
-func coordinator(linksToProcess chan string, linksToPossiblyProcess chan string) {
+func hashString(input string) uint64 {
+	h := fnv.New64()
+	h.Write([]byte(input))
+	return h.Sum64()
+}
+
+func normalizeUrl(u string) (outputUrl string, err error) {
+	outputUrl, err = unorm.Normalize(u)
+	return
+}
+
+func isBlacklisted(link string, parsedLink *url.URL) bool {
+	blacklistedDomains := map[string]bool{
+		"guardian.shit.cx": true,
+	}
+
+	if _, ok := blacklistedDomains[parsedLink.Hostname()]; ok {
+		return true
+	}
+
+	blacklistedPrefixes := []string{
+		"gemini://gemi.dev/cgi-bin/",
+		"gemini://caolan.uk/cgi-bin/weather.py/wxfcs",
+		"gemini://illegaldrugs.net/cgi-bin/",
+	}
+
+	for _, prefix := range blacklistedPrefixes {
+		if strings.HasPrefix(link, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func coordinator(nprocs int, processorInput []chan string, processorOutputs chan string) {
 	f, err := os.Create("links.txt")
 	if err != nil {
 		panic(err)
@@ -159,14 +200,45 @@ func coordinator(linksToProcess chan string, linksToPossiblyProcess chan string)
 	defer f.Close()
 
 	seen := map[string]bool{}
-	for link := range linksToPossiblyProcess {
+	for link := range processorOutputs {
 		if _, ok := seen[link]; ok {
 			continue
 		}
 
+		link, err = normalizeUrl(link)
+		if err != nil {
+			continue
+		}
+
+		u, err := url.Parse(link)
+		if err != nil {
+			continue
+		}
+
+		if u.Scheme != "gemini" {
+			continue
+		}
+
+		if isBlacklisted(link, u) {
+			continue
+		}
+
+		host := u.Hostname()
+		ips, err := net.LookupIP(host)
+		if err != nil {
+			fmt.Printf("Error resolving host %s: %s\n", host, err)
+			continue
+		}
+		if len(ips) == 0 {
+			continue
+		}
+		ip := ips[0]
+
 		fmt.Println("Adding: ", link)
 		seen[link] = true
-		linksToProcess <- link
+
+		n := hashString(ip.String()) % uint64(nprocs)
+		processorInput[n] <- link
 
 		_, err = f.WriteString(link + "\n")
 		if err != nil {
@@ -183,15 +255,22 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	ctx := context.Background()
+	nprocs := 500
 
-	linksToProcess := make(chan string, 100000)
-	linksToPossiblyProcess := make(chan string, 100000)
-	for i := 0; i < 500; i += 1 {
-		go process(ctx, linksToProcess, linksToPossiblyProcess)
+	// create an array of channel, which will each serve as the input to each
+	// processor.
+	processorInput := make([]chan string, nprocs)
+	for i := 0; i < nprocs; i++ {
+		processorInput[i] = make(chan string, 1000)
 	}
 
-	go coordinator(linksToProcess, linksToPossiblyProcess)
+	processorOutput := make(chan string, 100000)
+
+	for i := 0; i < nprocs; i += 1 {
+		go process(processorInput[i], processorOutput)
+	}
+
+	go coordinator(nprocs, processorInput, processorOutput)
 
 	// seed the crawler from the input file
 	inputFile, err := os.Open("input.txt")
@@ -202,11 +281,15 @@ func main() {
 
 	scanner := bufio.NewScanner(inputFile)
 	for scanner.Scan() {
-		linksToPossiblyProcess <- scanner.Text()
+		processorOutput <- scanner.Text()
 	}
 
 	for {
-		fmt.Println("Links in queue: ", len(linksToProcess))
+		nLinks := 0
+		for _, channel := range processorInput {
+			nLinks += len(channel)
+		}
+		fmt.Println("Links in queue: ", nLinks)
 		time.Sleep(1 * time.Second)
 	}
 }

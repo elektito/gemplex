@@ -1,2 +1,8 @@
 github.com/a-h/gemini v0.0.66 h1:yOhrMrQQ+fXJQqetknkgHGsh247UliSnsUbq306yUQ8=
 github.com/a-h/gemini v0.0.66/go.mod h1:p9wvIRDc2s3Lnbkw7CgNzDNgJHPuXDwh3dOF7w0NT8s=
+github.com/sekimura/go-normalize-url v0.0.0-20150113070447-c2b8a31b72ab h1:oJkKiPdMFgCoase0cZf/yi5Bv8buWwgxXFsucMvO8+k=
+github.com/sekimura/go-normalize-url v0.0.0-20150113070447-c2b8a31b72ab/go.mod h1:dxylVFC0+b6JA0rnrGijdlD15cnJ73QhD69y8UdEmlI=
+golang.org/x/net v0.8.0 h1:Zrh2ngAOFYneWTAIAPethzeaQLuHwhuBkuV6ZiRnUaQ=
+golang.org/x/net v0.8.0/go.mod h1:QVkue5JL9kW//ek3r6jTKnTFis1tRmNAW2P1shuFdJc=
+golang.org/x/text v0.8.0 h1:57P1ETyNKtuIjB4SRd15iJxuhj8Gc416Y78H3qgMh68=
+golang.org/x/text v0.8.0/go.mod h1:e1OnstbJyHTd6l/uOt8jFFHp6TRDWZR/bV3emEE/zU8=
