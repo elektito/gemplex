@@ -12,6 +12,7 @@ import (
 	_ "net/http/pprof"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -266,6 +267,21 @@ func seed(inputFile string, channel chan string) {
 	fmt.Printf("Finished seeding with %d URLs.\n", n)
 }
 
+func logSizeGroups(sizeGroups map[int]int) {
+	sortedSizes := make([]int, 0)
+	for k := range sizeGroups {
+		sortedSizes = append(sortedSizes, k)
+	}
+	sort.Ints(sortedSizes)
+
+	msg := "channels [size:count]:"
+	for _, size := range sortedSizes {
+		count := sizeGroups[size]
+		msg += fmt.Sprintf(" %d:%d", size, count)
+	}
+	fmt.Println(msg)
+}
+
 func main() {
 	// Setup an http server to make pprof stats available
 	go func() {
@@ -296,10 +312,20 @@ func main() {
 
 	for {
 		nLinks := 0
+		sizeGroups := map[int]int{}
 		for _, channel := range processorInput {
-			nLinks += len(channel)
+			size := len(channel)
+			nLinks += size
+
+			if _, ok := sizeGroups[size]; ok {
+				sizeGroups[size] += 1
+			} else {
+				sizeGroups[size] = 1
+			}
 		}
-		fmt.Println("Links in queue: ", nLinks)
+		fmt.Println("Links in queue: ", nLinks, " outputQueue: ", len(processorOutput))
+		logSizeGroups(sizeGroups)
+
 		time.Sleep(1 * time.Second)
 	}
 }
