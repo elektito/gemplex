@@ -264,7 +264,7 @@ func coordinator(nprocs int, processorInput []chan string, processorOutputs chan
 				panic(err)
 			}
 
-			if len(toAdd) > 0 {
+			if len(toAdd) > 100 {
 				go queueLinks(toAdd, processorInput, nprocs)
 				toAdd = make([]QueueItem, 0)
 			}
