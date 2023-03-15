@@ -144,7 +144,7 @@ func process(idx int, processorInput chan string, processorOutput chan VisitResu
 		body, code, meta, err := ReadGemini(ctx, client, u)
 		if err != nil {
 			fmt.Println("Error: url=", urlStr, " ", err)
-			return
+			continue
 		}
 
 		_, _ = code, meta
