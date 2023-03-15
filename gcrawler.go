@@ -253,12 +253,14 @@ func coordinator(nprocs int, processorInput []chan string, processorOutputs chan
 				ips, err := net.LookupIP(host)
 				if err != nil {
 					fmt.Printf("Error resolving host %s: %s\n", host, err)
+					host2ip[host] = ""
 					continue
 				}
 				if len(ips) == 0 {
 					continue
 				}
 				ip = ips[0].String()
+				host2ip[host] = ip
 			}
 
 			n := int(hashString(ip) % uint64(nprocs))
