@@ -205,23 +205,6 @@ type QueueItem struct {
 	url  *url.URL
 }
 
-func queueLinks(items []QueueItem, processorInput []chan string, nprocs int) {
-	for _, item := range items {
-		host := item.url.Hostname()
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			fmt.Printf("Error resolving host %s: %s\n", host, err)
-			continue
-		}
-		if len(ips) == 0 {
-			continue
-		}
-		ip := ips[0]
-		n := int(hashString(ip.String()) % uint64(nprocs))
-		processorInput[n] <- item.link
-	}
-}
-
 func coordinator(nprocs int, processorInput []chan string, processorOutputs chan VisitResult) {
 	f, err := os.Create("links.txt")
 	if err != nil {
@@ -229,9 +212,10 @@ func coordinator(nprocs int, processorInput []chan string, processorOutputs chan
 	}
 	defer f.Close()
 
+	host2ip := map[string]string{}
+
 	seen := map[string]bool{}
 	for visitResult := range processorOutputs {
-		toAdd := make([]QueueItem, 0)
 		for _, link := range visitResult.links {
 			if _, ok := seen[link]; ok {
 				continue
@@ -257,20 +241,35 @@ func coordinator(nprocs int, processorInput []chan string, processorOutputs chan
 
 			seen[link] = true
 
-			toAdd = append(toAdd, QueueItem{link, u})
-
 			_, err = f.WriteString(link + "\n")
 			if err != nil {
 				panic(err)
 			}
 
-			if len(toAdd) > 100 {
-				go queueLinks(toAdd, processorInput, nprocs)
-				toAdd = make([]QueueItem, 0)
+			host := u.Hostname()
+			ip, ok := host2ip[host]
+			if !ok {
+				ips, err := net.LookupIP(host)
+				if err != nil {
+					fmt.Printf("Error resolving host %s: %s\n", host, err)
+					continue
+				}
+				if len(ips) == 0 {
+					continue
+				}
+				ip = ips[0].String()
+			}
+
+			n := int(hashString(ip) % uint64(nprocs))
+
+			select {
+			case processorInput[n] <- link:
+			default:
+				// channel buffer is full
+				// TODO keep the link and try later
+				fmt.Printf("Buffer %d is full. Dropping link: %s\n", n, link)
 			}
 		}
-
-		go queueLinks(toAdd, processorInput, nprocs)
 	}
 
 	fmt.Println("Exited coordinator")
