@@ -218,14 +218,16 @@ func coordinator(nprocs int, processorInput []chan string, processorOutputs chan
 	seen := map[string]bool{}
 	for visitResult := range processorOutputs {
 		for _, link := range visitResult.links {
-			if _, ok := seen[link]; ok {
-				continue
-			}
-
 			link, err = normalizeUrl(link)
 			if err != nil {
 				continue
 			}
+
+			if _, ok := seen[link]; ok {
+				continue
+			}
+
+			seen[link] = true
 
 			u, err := url.Parse(link)
 			if err != nil {
@@ -239,8 +241,6 @@ func coordinator(nprocs int, processorInput []chan string, processorOutputs chan
 			if isBlacklisted(link, u) {
 				continue
 			}
-
-			seen[link] = true
 
 			_, err = f.WriteString(link + "\n")
 			if err != nil {
