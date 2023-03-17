@@ -108,8 +108,14 @@ func ReadGemini(ctx context.Context, client *gemini.Client, u *url.URL) (body st
 func GetLinks(doc string, base *url.URL) []string {
 	lines := strings.Split(doc, "\n")
 	links := make([]string, 0)
+	inPre := false
 	for _, line := range lines {
-		if !strings.HasPrefix(line, "=>") {
+		if strings.HasPrefix(line, "```") {
+			inPre = !inPre
+			continue
+		}
+
+		if !inPre && !strings.HasPrefix(line, "=>") {
 			continue
 		}
 
