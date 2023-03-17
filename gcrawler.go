@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"database/sql"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +23,8 @@ import (
 	"github.com/a-h/gemini"
 	_ "github.com/lib/pq"
 	unorm "github.com/sekimura/go-normalize-url"
+	"golang.org/x/net/html/charset"
+	"golang.org/x/text/transform"
 )
 
 const (
@@ -102,8 +106,32 @@ func readGeminia(ctx context.Context, client *gemini.Client, u *url.URL) (body [
 	return
 }
 
-func parsePage(body []byte, base *url.URL) (links []string, title string) {
-	doc := string(body)
+func convertToString(body []byte, contentType string) (s string, err error) {
+	encoding, _, _ := charset.DetermineEncoding(body, contentType)
+
+	reader := transform.NewReader(bytes.NewBuffer(body), encoding.NewEncoder())
+	docBytes, err := ioutil.ReadAll(reader)
+	if err != nil {
+		err = fmt.Errorf("Error converting text encoding: %w", err)
+		return
+	}
+
+	s = string(docBytes)
+
+	// postgres doesn't like null character in strings, even though it's valid
+	// utf-8.
+	s = strings.ReplaceAll(s, "\x00", "")
+
+	return
+}
+
+func parsePage(body []byte, base *url.URL, contentType string) (links []string, title string) {
+	doc, err := convertToString(body, contentType)
+	if err != nil {
+		fmt.Printf("Error converting to string: url=%s content-type=%s\n", base.String(), contentType)
+		return
+	}
+
 	lines := strings.Split(doc, "\n")
 	inPre := false
 	foundCanonicalTitle := false
@@ -188,6 +216,8 @@ func parsePage(body []byte, base *url.URL) (links []string, title string) {
 		title = base.String()
 	}
 
+	title = strings.ToValidUTF8(title, "")
+
 	return
 }
 
@@ -212,13 +242,14 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 
 		switch {
 		case code == 20: // SUCCESS
-			links, title := parsePage(body, u)
+			contentType := meta
+			links, title := parsePage(body, u, contentType)
 			results <- VisitResult{
 				url:         urlStr,
 				statusCode:  code,
 				links:       links,
 				contents:    body,
-				contentType: meta,
+				contentType: contentType,
 				title:       title,
 				visitTime:   time.Now(),
 			}
