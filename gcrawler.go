@@ -178,6 +178,8 @@ func parsePage(body []byte, base *url.URL, contentType string) (links []string, 
 		}
 
 		linkUrlStr := strings.TrimSpace(parts[0])
+		linkUrlStr = strings.ToValidUTF8(linkUrlStr, "")
+
 		linkText := linkUrlStr
 		if len(parts) == 2 {
 			linkText = strings.TrimSpace(parts[1])
