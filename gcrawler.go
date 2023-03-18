@@ -454,6 +454,10 @@ func isBlacklisted(link string, parsedLink *url.URL) bool {
 		"gemini://caolan.uk/cgi-bin/weather.py/wxfcs",
 		"gemini://illegaldrugs.net/cgi-bin/",
 		"gemini://hoagie.space/proxy/",
+		"gemini://tlgs.one/v/",
+		"gemini://tlgs.one/search/",
+		"gemini://tlgs.one/search_jump/",
+		"gemini://tlgs.one/backlinks",
 	}
 
 	for _, prefix := range blacklistedPrefixes {
