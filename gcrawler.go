@@ -600,9 +600,6 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	// Set gemini default port for url normalizer
-	unorm.DefaultPorts["gemini"] = 1965
-
 	nprocs := 500
 
 	// create an array of channel, which will each serve as the input to each
