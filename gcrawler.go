@@ -24,6 +24,7 @@ import (
 
 	"github.com/PuerkitoBio/purell"
 	"github.com/a-h/gemini"
+	"github.com/elektito/gcrawler/mgmt"
 	_ "github.com/lib/pq"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
@@ -636,7 +637,8 @@ func logSizeGroups(sizeGroups map[int]int) {
 }
 
 func main() {
-	// Setup an http server to make pprof stats available
+	// Setup an http server for pprof and management ui
+	mgmt.Setup(dbConnStr)
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
