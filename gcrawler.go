@@ -514,6 +514,12 @@ func coordinator(nprocs int, visitorInputs []chan string, urlChan <-chan string,
 
 loop:
 	for link := range urlChan {
+		select {
+		case <-done:
+			break loop
+		default:
+		}
+
 		if _, ok := seen[link]; ok {
 			continue
 		}
