@@ -14,9 +14,12 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"net/url"
+	"os"
+	"os/signal"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/PuerkitoBio/purell"
@@ -407,11 +410,12 @@ func updateDbTempError(db *sql.DB, r VisitResult) {
 	panicOnErr(err)
 }
 
-func flusher(c <-chan VisitResult) {
+func flusher(c <-chan VisitResult, done chan bool) {
 	db, err := sql.Open("postgres", dbConnStr)
 	panicOnErr(err)
 	defer db.Close()
 
+loop:
 	for r := range c {
 		// update the original url record
 		switch {
@@ -425,10 +429,15 @@ func flusher(c <-chan VisitResult) {
 			// for our purposes we'll consider requiring input the same as
 			// permanent errors. we'll retry it, but a long time later.
 			updateDbPermanentError(db, r)
+		case <-done:
+			break loop
 		default:
 			updateDbTempError(db, r)
 		}
 	}
+
+	done <- true
+	fmt.Println("Exited flusher.")
 }
 
 func hashString(input string) uint64 {
@@ -496,10 +505,11 @@ func isBlacklisted(link string, parsedLink *url.URL) bool {
 	return false
 }
 
-func coordinator(nprocs int, visitorInputs []chan string, urlChan <-chan string) {
+func coordinator(nprocs int, visitorInputs []chan string, urlChan <-chan string, done chan bool) {
 	host2ip := map[string]string{}
-
 	seen := map[string]bool{}
+
+loop:
 	for link := range urlChan {
 		if _, ok := seen[link]; ok {
 			continue
@@ -533,6 +543,8 @@ func coordinator(nprocs int, visitorInputs []chan string, urlChan <-chan string)
 
 		select {
 		case visitorInputs[n] <- link:
+		case <-done:
+			break loop
 		default:
 			// channel buffer is full. we won't do anything for now. the url
 			// will be picked up again by the seeder later.
@@ -540,6 +552,7 @@ func coordinator(nprocs int, visitorInputs []chan string, urlChan <-chan string)
 	}
 
 	fmt.Println("Exited coordinator")
+	done <- true
 }
 
 func getDueUrls(c chan<- string) {
@@ -564,18 +577,35 @@ func getDueUrls(c chan<- string) {
 	close(c)
 }
 
-func seeder(output chan<- string) {
+func seeder(output chan<- string, done chan bool) {
+loop:
 	for {
 		c := make(chan string)
 		go getDueUrls(c)
-		for url := range c {
-			output <- url
+		for urlString := range c {
+			urlParsed, err := url.Parse(urlString)
+			if err != nil {
+				continue
+			}
+
+			select {
+			case output <- urlString:
+			case <-done:
+				break loop
+			}
 		}
 
 		// since we just exhausted all urls, we'll wait a bit to allow for more
 		// urls to be added to the database.
-		time.Sleep(1 * time.Second)
+		select {
+		case <-time.After(1 * time.Second):
+		case <-done:
+			break loop
+		}
 	}
+
+	done <- true
+	fmt.Println("Exited seeder.")
 }
 
 func logSizeGroups(sizeGroups map[int]int) {
@@ -615,10 +645,18 @@ func main() {
 	}
 
 	urlChan := make(chan string, 100000)
-	go coordinator(nprocs, inputUrls, urlChan)
-	go seeder(urlChan)
-	go flusher(visitResults)
+	coordDone := make(chan bool)
+	seedDone := make(chan bool)
+	flushDone := make(chan bool)
+	go coordinator(nprocs, inputUrls, urlChan, coordDone)
+	go seeder(urlChan, seedDone)
+	go flusher(visitResults, flushDone)
 
+	// setup signal handling
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+loop:
 	for {
 		nLinks := 0
 		sizeGroups := map[int]int{}
@@ -635,6 +673,51 @@ func main() {
 		fmt.Println("Links in queue: ", nLinks, " outputQueue: ", len(visitResults))
 		logSizeGroups(sizeGroups)
 
-		time.Sleep(1 * time.Second)
+		select {
+		case <-sigs:
+			fmt.Println("Received signal.")
+			break loop
+		case <-time.After(1 * time.Second):
+		}
 	}
+
+	fmt.Println("Shutting down workers...")
+	seedDone <- true
+	<-seedDone
+	coordDone <- true
+	<-coordDone
+	flushDone <- true
+	<-flushDone
+	for _, c := range inputUrls {
+		close(c)
+	}
+
+	fmt.Println("Draining channels...")
+	urls := make([][]string, nprocs)
+	for i := 0; i < nprocs; i++ {
+		urls[i] = make([]string, 0)
+	}
+	for i, c := range inputUrls {
+		for u := range c {
+			urls[i] = append(urls[i], u)
+		}
+	}
+
+	f, err := os.Create("state.gc")
+	panicOnErr(err)
+	defer f.Close()
+
+	for i := 0; i < nprocs; i++ {
+		if len(urls[i]) == 0 {
+			continue
+		}
+
+		f.WriteString(fmt.Sprintf("---- channel %d ----\n", i))
+		for _, u := range urls[i] {
+			f.WriteString(u + "\n")
+		}
+	}
+
+	fmt.Println("Wrote channel contents to state.gc")
+	fmt.Println("Done.")
 }
