@@ -14,15 +14,14 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"net/url"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/purell"
 	"github.com/a-h/gemini"
 	_ "github.com/lib/pq"
-	unorm "github.com/sekimura/go-normalize-url"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
 )
@@ -196,6 +195,12 @@ func parsePage(body []byte, base *url.URL, contentType string) (links []string, 
 
 		// convert relative urls to absolute
 		linkUrl = base.ResolveReference(linkUrl)
+
+		linkUrl, err = normalizeUrl(linkUrl)
+		if err != nil {
+			continue
+		}
+
 		linkUrlStr = linkUrl.String()
 
 		if linkUrl.Scheme != "gemini" {
@@ -203,11 +208,6 @@ func parsePage(body []byte, base *url.URL, contentType string) (links []string, 
 		}
 
 		if isBlacklisted(linkUrlStr, linkUrl) {
-			continue
-		}
-
-		linkUrlStr, err = normalizeUrl(linkUrlStr)
-		if err != nil {
 			continue
 		}
 
@@ -437,8 +437,28 @@ func hashString(input string) uint64 {
 	return h.Sum64()
 }
 
-func normalizeUrl(u string) (outputUrl string, err error) {
-	outputUrl, err = unorm.Normalize(u)
+func normalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
+	// remove default gemini port, since purell only supports doing this with
+	// http and https.
+	if u.Scheme == "gemini" && u.Port() == "1965" {
+		u.Host = strings.ReplaceAll(u.Host, ":1965", "")
+	}
+
+	flags := purell.FlagLowercaseScheme |
+		purell.FlagLowercaseHost |
+		purell.FlagUppercaseEscapes |
+		purell.FlagDecodeUnnecessaryEscapes |
+		purell.FlagEncodeNecessaryEscapes |
+		purell.FlagRemoveEmptyQuerySeparator |
+		purell.FlagRemoveDotSegments |
+		purell.FlagRemoveDuplicateSlashes |
+		purell.FlagSortQuery |
+		purell.FlagRemoveEmptyPortSeparator |
+		purell.FlagRemoveUnnecessaryHostDots
+	urlStr := purell.NormalizeURL(u, flags)
+
+	outputUrl, _ = url.Parse(urlStr)
+
 	return
 }
 
