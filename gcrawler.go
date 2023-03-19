@@ -695,12 +695,10 @@ loop:
 	flushDone <- true
 	<-flushDone
 
-	go func() {
-		fmt.Println("Closing channels...")
-		for _, c := range inputUrls {
-			close(c)
-		}
-	}()
+	fmt.Println("Closing channels...")
+	for _, c := range inputUrls {
+		close(c)
+	}
 
 	fmt.Println("Draining channels...")
 	urls := make([][]string, nprocs)
