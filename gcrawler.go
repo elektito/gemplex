@@ -457,7 +457,7 @@ func normalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
 		purell.FlagRemoveUnnecessaryHostDots
 	urlStr := purell.NormalizeURL(u, flags)
 
-	outputUrl, _ = url.Parse(urlStr)
+	outputUrl, err = url.Parse(urlStr)
 
 	return
 }
