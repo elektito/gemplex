@@ -210,10 +210,6 @@ func parsePage(body []byte, base *url.URL, contentType string) (links []string, 
 			continue
 		}
 
-		if isBlacklisted(linkUrlStr, linkUrl) {
-			continue
-		}
-
 		links = append(links, linkUrlStr)
 	}
 
@@ -585,6 +581,9 @@ loop:
 		for urlString := range c {
 			urlParsed, err := url.Parse(urlString)
 			if err != nil {
+				continue
+			}
+			if isBlacklisted(urlString, urlParsed) {
 				continue
 			}
 
