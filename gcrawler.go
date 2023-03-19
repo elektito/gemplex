@@ -544,9 +544,7 @@ func coordinator(nprocs int, visitorInputs []chan string, urlChan <-chan string)
 
 func getDueUrls(c chan<- string) {
 	db, err := sql.Open("postgres", dbConnStr)
-	if err != nil {
-		panic(err)
-	}
+	panicOnErr(err)
 	defer db.Close()
 
 	rows, err := db.Query(
@@ -556,9 +554,7 @@ func getDueUrls(c chan<- string) {
                        (status_code / 10 = 4 and last_visit_time + retry_time < now()) or
                        (last_visit_time is not null and last_visit_time + retry_time < now())`,
 	)
-	if err != nil {
-		panic(err)
-	}
+	panicOnErr(err)
 	defer rows.Close()
 	for rows.Next() {
 		var url string
