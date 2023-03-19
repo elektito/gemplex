@@ -688,6 +688,7 @@ loop:
 		select {
 		case <-sigs:
 			fmt.Println("Received signal.")
+			signal.Stop(sigs)
 			break loop
 		case <-time.After(1 * time.Second):
 		}
