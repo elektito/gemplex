@@ -514,50 +514,50 @@ func coordinator(nprocs int, visitorInputs []chan string, urlChan <-chan string,
 	seen := map[string]bool{}
 
 loop:
-	for link := range urlChan {
+	for {
 		select {
+		case link := <-urlChan:
+			if _, ok := seen[link]; ok {
+				continue
+			}
+
+			seen[link] = true
+
+			// urls should already be error checked (in GetLinks), so we ignore the
+			// error here
+			u, _ := url.Parse(link)
+
+			host := u.Hostname()
+			ip, ok := host2ip[host]
+			if !ok {
+				ips, err := net.LookupIP(host)
+				if err != nil {
+					fmt.Printf("Error resolving host %s: %s\n", host, err)
+					host2ip[host] = ""
+					continue
+				}
+				if len(ips) == 0 {
+					fmt.Printf("Error resolving host %s: empty response\n", host)
+					host2ip[host] = ""
+					continue
+				}
+				ip = ips[0].String()
+				host2ip[host] = ip
+			}
+
+			n := int(hashString(ip) % uint64(nprocs))
+
+			select {
+			case visitorInputs[n] <- link:
+			case <-done:
+				break loop
+			default:
+				// channel buffer is full. we won't do anything for now. the url
+				// will be picked up again by the seeder later.
+			}
 		case <-done:
 			break loop
 		default:
-		}
-
-		if _, ok := seen[link]; ok {
-			continue
-		}
-
-		seen[link] = true
-
-		// urls should already be error checked (in GetLinks), so we ignore the
-		// error here
-		u, _ := url.Parse(link)
-
-		host := u.Hostname()
-		ip, ok := host2ip[host]
-		if !ok {
-			ips, err := net.LookupIP(host)
-			if err != nil {
-				fmt.Printf("Error resolving host %s: %s\n", host, err)
-				host2ip[host] = ""
-				continue
-			}
-			if len(ips) == 0 {
-				fmt.Printf("Error resolving host %s: empty response\n", host)
-				host2ip[host] = ""
-				continue
-			}
-			ip = ips[0].String()
-			host2ip[host] = ip
-		}
-
-		n := int(hashString(ip) % uint64(nprocs))
-
-		select {
-		case visitorInputs[n] <- link:
-		case <-done:
-			break loop
-		default:
-			// channel buffer is full. we won't do anything for now. the url
-			// will be picked up again by the seeder later.
 		}
 	}
 
