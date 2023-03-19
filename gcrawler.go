@@ -412,23 +412,25 @@ func flusher(c <-chan VisitResult, done chan bool) {
 	defer db.Close()
 
 loop:
-	for r := range c {
-		// update the original url record
-		switch {
-		case r.statusCode/10 == 2:
-			updateDbSuccessfulVisit(db, r)
-		case r.statusCode/10 == 3: // REDIRECT
-			updateDbRedirect(db, r)
-		case r.statusCode/10 == 5: // TEMPORARY ERROR
-			fallthrough
-		case r.statusCode/10 == 1: // REQUIRES INPUT
-			// for our purposes we'll consider requiring input the same as
-			// permanent errors. we'll retry it, but a long time later.
-			updateDbPermanentError(db, r)
+	for {
+		select {
+		case r := <-c:
+			switch {
+			case r.statusCode/10 == 2:
+				updateDbSuccessfulVisit(db, r)
+			case r.statusCode/10 == 3: // REDIRECT
+				updateDbRedirect(db, r)
+			case r.statusCode/10 == 5: // TEMPORARY ERROR
+				fallthrough
+			case r.statusCode/10 == 1: // REQUIRES INPUT
+				// for our purposes we'll consider requiring input the same as
+				// permanent errors. we'll retry it, but a long time later.
+				updateDbPermanentError(db, r)
+			default:
+				updateDbTempError(db, r)
+			}
 		case <-done:
 			break loop
-		default:
-			updateDbTempError(db, r)
 		}
 	}
 
