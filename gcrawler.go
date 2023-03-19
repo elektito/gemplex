@@ -127,10 +127,10 @@ func convertToString(body []byte, contentType string) (s string, err error) {
 	return
 }
 
-func parsePage(body []byte, base *url.URL, contentType string) (links []string, title string) {
+func parsePage(body []byte, base *url.URL, contentType string) (links []string, title string, err error) {
 	doc, err := convertToString(body, contentType)
 	if err != nil {
-		fmt.Printf("Error converting to string: url=%s content-type=%s\n", base.String(), contentType)
+		fmt.Printf("Error converting to string: url=%s content-type=%s: %s\n", base.String(), contentType, err)
 		return
 	}
 
@@ -244,7 +244,11 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 		switch {
 		case code == 20: // SUCCESS
 			contentType := meta
-			links, title := parsePage(body, u, contentType)
+			links, title, err := parsePage(body, u, contentType)
+			if err != nil {
+				fmt.Println("Error parsing page: %s", err)
+				continue
+			}
 			results <- VisitResult{
 				url:         urlStr,
 				statusCode:  code,
