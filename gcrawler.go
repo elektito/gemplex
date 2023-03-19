@@ -464,7 +464,8 @@ func normalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
 
 func isBlacklisted(link string, parsedLink *url.URL) bool {
 	blacklistedDomains := map[string]bool{
-		"guardian.shit.cx": true,
+		"guardian.shit.cx":      true,
+		"mastogem.picasoft.net": true, // wants us to slow down (status code: 44)
 	}
 
 	if _, ok := blacklistedDomains[parsedLink.Hostname()]; ok {
