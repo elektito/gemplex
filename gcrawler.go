@@ -268,7 +268,7 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 			}
 		}
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 
 	fmt.Printf("[%d] Exited visitor.\n", idx)
