@@ -132,6 +132,10 @@ func convertToString(body []byte, contentType string) (s string, err error) {
 }
 
 func isMostlyAlphanumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+
 	n := 0
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
