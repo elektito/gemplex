@@ -379,12 +379,16 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	panicOnErr(err)
 
 	for _, link := range r.links {
+		u, err := url.Parse(link)
+		if err != nil {
+			continue
+		}
 		var destUrlId int64
 		err = db.QueryRow(
-			`insert into urls (url) values ($1)
+			`insert into urls (url, hostname) values ($1, $2)
                      on conflict (url) do update set url = excluded.url
                      returning id`,
-			link,
+			link, u.Hostname(),
 		).Scan(&destUrlId)
 		panicOnErr(err)
 
@@ -415,10 +419,17 @@ func updateDbRedirect(db *sql.DB, r VisitResult) {
 		r.statusCode, r.redirectTarget, minRedirectRetryAfterChange, r.url)
 	panicOnErr(err)
 
-	// insert redirect target as a possibly new url (we won't add it to
-	// the links table though)
-	_, err = db.Exec(`insert into urls (url) values ($1) on conflict do nothing`, r.redirectTarget)
-	panicOnErr(err)
+	u, err := url.Parse(r.redirectTarget)
+	if err != nil {
+		fmt.Printf("Invalid redirect target: %s\n", r.redirectTarget)
+	} else {
+		// insert redirect target as a possibly new url (we won't add it to
+		// the links table though)
+		_, err = db.Exec(
+			`insert into urls (url, hostname) values ($1, $2) on conflict do nothing`,
+			r.redirectTarget, u.Hostname())
+		panicOnErr(err)
+	}
 
 	err = tx.Commit()
 	panicOnErr(err)
