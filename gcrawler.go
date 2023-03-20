@@ -139,7 +139,6 @@ func isMostlyAlphanumeric(s string) bool {
 		}
 	}
 
-	fmt.Printf("DBG: [%s] n=%d len=%d\n", s, n, len(s))
 	return float64(n)/float64(len(s)) > 0.6
 }
 
