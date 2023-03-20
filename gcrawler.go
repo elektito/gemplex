@@ -294,7 +294,7 @@ func panicOnErr(err error) {
 
 func parseContentType(ct string) (contentType string, args string) {
 	parts := strings.SplitN(ct, ";", 2)
-	contentType = parts[0]
+	contentType = strings.TrimSpace(parts[0])
 	if len(parts) == 2 {
 		args = strings.TrimSpace(parts[1])
 	}
