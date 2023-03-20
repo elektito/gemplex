@@ -6,7 +6,6 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
-	"strings"
 )
 
 const rootPage = `
@@ -76,7 +75,7 @@ func getRootPage(w http.ResponseWriter, r *http.Request) {
 		}
 		defer db.Close()
 
-		var contents []byte
+		var contents string
 		var content_type string
 		var title string
 		err = db.QueryRow(
@@ -90,9 +89,7 @@ func getRootPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if strings.HasPrefix(content_type, "text/") {
-			s := string(contents)
-			s = fmt.Sprintf(`
+		s := fmt.Sprintf(`
 <html><body>
 url: %s<br>
 title: %s<br>
@@ -104,10 +101,7 @@ content-type: %s<br>
 <a href="/">home</a>
 <a href="/random">random</a>
 </body></html>
-`, url, title, content_type, s)
-			io.WriteString(w, s)
-		} else {
-			io.WriteString(w, fmt.Sprintf("binary len: %d", len(contents)))
-		}
+`, url, title, content_type, contents)
+		io.WriteString(w, s)
 	}
 }

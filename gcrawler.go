@@ -46,7 +46,7 @@ type VisitResult struct {
 	error          error
 	statusCode     int
 	links          []string
-	contents       []byte
+	contents       string
 	contentType    string
 	redirectTarget string
 	title          string
@@ -125,17 +125,19 @@ func convertToString(body []byte, contentType string) (s string, err error) {
 	// utf-8.
 	s = strings.ReplaceAll(s, "\x00", "")
 
+	s = strings.ToValidUTF8(s, "")
+
 	return
 }
 
-func parsePage(body []byte, base *url.URL, contentType string) (links []string, title string, err error) {
-	doc, err := convertToString(body, contentType)
+func parsePage(body []byte, base *url.URL, contentType string) (text string, links []string, title string, err error) {
+	text, err = convertToString(body, contentType)
 	if err != nil {
 		fmt.Printf("Error converting to string: url=%s content-type=%s: %s\n", base.String(), contentType, err)
 		return
 	}
 
-	lines := strings.Split(doc, "\n")
+	lines := strings.Split(text, "\n")
 	inPre := false
 	foundCanonicalTitle := false
 	for _, line := range lines {
@@ -245,16 +247,16 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 		switch {
 		case code == 20: // SUCCESS
 			contentType := meta
-			links, title, err := parsePage(body, u, contentType)
+			text, links, title, err := parsePage(body, u, contentType)
 			if err != nil {
-				fmt.Println("Error parsing page: %s", err)
+				fmt.Printf("Error parsing page: %s\n", err)
 				continue
 			}
 			results <- VisitResult{
 				url:         urlStr,
 				statusCode:  code,
 				links:       links,
-				contents:    body,
+				contents:    text,
 				contentType: contentType,
 				title:       title,
 				visitTime:   time.Now(),
@@ -294,8 +296,8 @@ func parseContentType(ct string) (contentType string, args string) {
 	return
 }
 
-func calcContentHash(contents []byte) string {
-	hash := md5.Sum(contents)
+func calcContentHash(contents string) string {
+	hash := md5.Sum([]byte(contents))
 	return hex.EncodeToString(hash[:])
 }
 
