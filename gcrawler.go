@@ -90,7 +90,7 @@ func readGeminia(ctx context.Context, client *gemini.Client, u *url.URL) (body [
 		}
 
 		if code/10 == 2 { // SUCCESS response
-			if !strings.HasPrefix(resp.Header.Meta, "text/gemini") {
+			if !strings.HasPrefix(resp.Header.Meta, "text/") {
 				err = fmt.Errorf("Not gemtext doc: %s", resp.Header.Meta)
 				return
 			}
@@ -137,6 +137,7 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 		return
 	}
 
+	isGemtext := strings.HasPrefix(contentType, "text/gemini")
 	lines := strings.Split(text, "\n")
 	inPre := false
 	foundCanonicalTitle := false
@@ -161,7 +162,7 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 			continue
 		}
 
-		if !strings.HasPrefix(line, "=>") {
+		if !isGemtext || !strings.HasPrefix(line, "=>") {
 			if title != "" {
 				continue
 			}
@@ -172,6 +173,10 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 				title = title[:maxTitleLength]
 			}
 
+			continue
+		}
+
+		if !isGemtext {
 			continue
 		}
 
