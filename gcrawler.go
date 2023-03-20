@@ -25,14 +25,14 @@ import (
 
 	"github.com/PuerkitoBio/purell"
 	"github.com/a-h/gemini"
-	"github.com/elektito/gcrawler/mgmt"
+	"github.com/elektito/gcrawler/config"
+	_ "github.com/elektito/gcrawler/mgmt"
 	_ "github.com/lib/pq"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
 )
 
 const (
-	dbConnStr                    = "dbname=gcrawler sslmode=disable host=/var/run/postgresql"
 	maxTitleLength               = 100
 	permanentErrorRetry          = "1 month"
 	tempErrorMinRetry            = "1 day"
@@ -461,7 +461,7 @@ func updateDbTempError(db *sql.DB, r VisitResult) {
 }
 
 func flusher(c <-chan VisitResult, done chan bool) {
-	db, err := sql.Open("postgres", dbConnStr)
+	db, err := sql.Open("postgres", config.GetDbConnStr())
 	panicOnErr(err)
 	defer db.Close()
 
@@ -615,7 +615,7 @@ loop:
 }
 
 func getDueUrls(c chan<- string) {
-	db, err := sql.Open("postgres", dbConnStr)
+	db, err := sql.Open("postgres", config.GetDbConnStr())
 	panicOnErr(err)
 	defer db.Close()
 
@@ -687,7 +687,6 @@ func logSizeGroups(sizeGroups map[int]int) {
 
 func main() {
 	// Setup an http server for pprof and management ui
-	mgmt.Setup(dbConnStr)
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()

@@ -6,6 +6,8 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+
+	"github.com/elektito/gcrawler/config"
 )
 
 const rootPage = `
@@ -21,15 +23,13 @@ const rootPage = `
 </html>
 `
 
-var dbConnStr string
-
-func Setup(connStr string) {
-	dbConnStr = connStr
+func init() {
 	http.HandleFunc("/", getRootPage)
 	http.HandleFunc("/random", getRandomPage)
 }
 
 func getRandomPage(w http.ResponseWriter, r *http.Request) {
+	dbConnStr := config.GetDbConnStr()
 	db, err := sql.Open("postgres", dbConnStr)
 	if err != nil {
 		io.WriteString(w, fmt.Sprintf("Error connecting to db: %s\nconnstr: %s", err, dbConnStr))
@@ -68,6 +68,7 @@ func getRootPage(w http.ResponseWriter, r *http.Request) {
 	if url == "" {
 		io.WriteString(w, rootPage)
 	} else {
+		dbConnStr := config.GetDbConnStr()
 		db, err := sql.Open("postgres", dbConnStr)
 		if err != nil {
 			io.WriteString(w, fmt.Sprintf("Error connecting to db: %s\nconnstr: %s", err, dbConnStr))
