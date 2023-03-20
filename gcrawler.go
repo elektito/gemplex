@@ -150,6 +150,15 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 		return
 	}
 
+	switch {
+	case strings.HasPrefix(contentType, "text/gemini"):
+	case strings.HasPrefix(contentType, "text/plain"):
+	case strings.HasPrefix(contentType, "text/markdown"):
+	default:
+		err = fmt.Errorf("Cannot process text type: %s", contentType)
+		return
+	}
+
 	isGemtext := strings.HasPrefix(contentType, "text/gemini")
 	lines := strings.Split(text, "\n")
 	inPre := false
