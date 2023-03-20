@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 
-	"github.com/elektito/gcrawler/config"
+	"github.com/elektito/gcrawler/pkg/config"
 )
 
 const rootPage = `

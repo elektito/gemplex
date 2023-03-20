@@ -25,8 +25,8 @@ import (
 
 	"github.com/PuerkitoBio/purell"
 	"github.com/a-h/gemini"
-	"github.com/elektito/gcrawler/config"
-	_ "github.com/elektito/gcrawler/mgmt"
+	"github.com/elektito/gcrawler/pkg/config"
+	_ "github.com/elektito/gcrawler/pkg/mgmt"
 	_ "github.com/lib/pq"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
