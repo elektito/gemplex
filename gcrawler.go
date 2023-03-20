@@ -21,6 +21,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/PuerkitoBio/purell"
 	"github.com/a-h/gemini"
@@ -130,6 +131,18 @@ func convertToString(body []byte, contentType string) (s string, err error) {
 	return
 }
 
+func isMostlyAlphanumeric(s string) bool {
+	n := 0
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			n += 1
+		}
+	}
+
+	fmt.Printf("DBG: [%s] n=%d len=%d\n", s, n, len(s))
+	return float64(n)/float64(len(s)) > 0.6
+}
+
 func parsePage(body []byte, base *url.URL, contentType string) (text string, links []string, title string, err error) {
 	text, err = convertToString(body, contentType)
 	if err != nil {
@@ -158,6 +171,9 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 
 			line = strings.TrimSpace(line)
 			title = strings.TrimSpace(line[1:])
+			if !isMostlyAlphanumeric(title) {
+				title = ""
+			}
 			foundCanonicalTitle = true
 			continue
 		}
@@ -168,9 +184,12 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 			}
 
 			title = strings.TrimSpace(line)
-
 			if len(title) > maxTitleLength {
 				title = title[:maxTitleLength]
+			}
+
+			if !isMostlyAlphanumeric(title) {
+				title = ""
 			}
 
 			continue
