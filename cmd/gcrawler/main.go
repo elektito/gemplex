@@ -517,9 +517,11 @@ func normalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
 
 	outputUrl, err = url.Parse(urlStr)
 
-	// remove trailing slash when the url points to the root of a hostname
-	if outputUrl.Path == "/" {
-		outputUrl.Path = ""
+	// make sure the root pages have a single slash as path (this seems more
+	// frequently seen in the wild, and so there's less chance we'll have to
+	// follow redirects from one to the other).
+	if outputUrl.Path == "" {
+		outputUrl.Path = "/"
 	}
 
 	return
