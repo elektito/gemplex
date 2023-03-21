@@ -41,6 +41,7 @@ const (
 	revisitTimeAfterChange       = "2 days"
 	maxRevisitTime               = "1 month"
 	minRedirectRetryAfterChange  = "1 week"
+	maxRedirects                 = 5
 )
 
 type VisitResult struct {
@@ -145,6 +146,24 @@ func isMostlyAlphanumeric(s string) bool {
 	}
 
 	return float64(n)/float64(len(s)) > 0.6
+}
+
+func makeUrlAbsolute(u string, base string) (result string, err error) {
+	parsedUrl, err := url.Parse(u)
+	if err != nil {
+		return
+	}
+	parsedBase, err := url.Parse(base)
+	if err != nil {
+		return
+	}
+	parsedUrl = parsedBase.ResolveReference(parsedUrl)
+	parsedUrl, err = normalizeUrl(parsedUrl)
+	if err != nil {
+		return
+	}
+	result = parsedUrl.String()
+	return
 }
 
 func parsePage(body []byte, base *url.URL, contentType string) (text string, links []string, title string, err error) {
@@ -265,8 +284,10 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 	ctx := context.Background()
 	client := gemini.NewClient()
+	redir := 0
 
 	for urlStr := range urls {
+	retryRedirect:
 		fmt.Printf("[%d] Processing: %s\n", idx, urlStr)
 		u, _ := url.Parse(urlStr)
 
@@ -299,10 +320,26 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 				visitTime:   time.Now(),
 			}
 		case code/10 == 3: // REDIRECT
-			results <- VisitResult{
-				url:            urlStr,
-				statusCode:     code,
-				redirectTarget: meta,
+			redir += 1
+			if redir == maxRedirects {
+				results <- VisitResult{
+					url:        urlStr,
+					error:      fmt.Errorf("Too many redirects"),
+					statusCode: code,
+				}
+			} else {
+				target, err := makeUrlAbsolute(meta, urlStr)
+				if err != nil {
+					results <- VisitResult{
+						url:        urlStr,
+						error:      fmt.Errorf("Invalid redirect target: %s", meta),
+						statusCode: code,
+					}
+				} else {
+					urlStr = target
+					redir++
+					goto retryRedirect
+				}
 			}
 		default:
 			results <- VisitResult{
@@ -361,7 +398,6 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
                  content_id = $1,
                  error = null,
                  status_code = $2,
-                 redirect_target = null,
                  retry_time = case when content_id = $1 then least(retry_time + $3, $4) else $5 end
                  where url = $6
                  returning id`,
@@ -391,38 +427,6 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 			`insert into links values ($1, $2)
                      on conflict do nothing`,
 			urlId, destUrlId)
-		utils.PanicOnErr(err)
-	}
-
-	err = tx.Commit()
-	utils.PanicOnErr(err)
-}
-
-func updateDbRedirect(db *sql.DB, r VisitResult) {
-	tx, err := db.Begin()
-	utils.PanicOnErr(err)
-
-	_, err = db.Exec(
-		`update urls set
-                 last_visit_time = now(),
-                 content_id = null,
-                 error = null,
-                 status_code = $1,
-                 redirect_target = $2,
-                 retry_time = case when redirect_target = $2 then retry_time * 2 else $3 end
-                 where url = $4`,
-		r.statusCode, r.redirectTarget, minRedirectRetryAfterChange, r.url)
-	utils.PanicOnErr(err)
-
-	u, err := url.Parse(r.redirectTarget)
-	if err != nil {
-		fmt.Printf("Invalid redirect target: %s\n", r.redirectTarget)
-	} else {
-		// insert redirect target as a possibly new url (we won't add it to
-		// the links table though)
-		_, err = db.Exec(
-			`insert into urls (url, hostname) values ($1, $2) on conflict do nothing`,
-			r.redirectTarget, u.Hostname())
 		utils.PanicOnErr(err)
 	}
 
@@ -467,8 +471,6 @@ loop:
 			switch {
 			case r.statusCode/10 == 2:
 				updateDbSuccessfulVisit(db, r)
-			case r.statusCode/10 == 3: // REDIRECT
-				updateDbRedirect(db, r)
 			case r.statusCode/10 == 5: // TEMPORARY ERROR
 				fallthrough
 			case r.statusCode/10 == 1: // REQUIRES INPUT
