@@ -1,0 +1,18 @@
+[db]
+# the name of the database to use:
+# name = "gcrawler"
+#
+# the hostname, or socket name to connect to:
+# host = "/var/run/postgresql"
+#
+# the port the database server is listening on:
+# port = 5432
+#
+# database username
+# user = "username"
+#
+# database password:
+# password = "verystringpassword"
+#
+# whether to use ssl to connect to the database or not:
+# sslmode = false
