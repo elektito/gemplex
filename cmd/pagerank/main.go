@@ -103,6 +103,40 @@ func pagerank(links map[int64]int64) (ranks map[int64]float64) {
 	return
 }
 
+func getHostRanks(urlLinks map[int64]int64, url2host map[int64]string) (hostRanks map[string]float64) {
+	hostRanks = map[string]float64{}
+
+	// we need to assign a node id to each hostname in order to be able to call
+	// pagerank
+	host2id := map[string]int64{}
+	id2host := map[int64]string{}
+	i := int64(0)
+	for _, host := range url2host {
+		host2id[host] = i
+		id2host[i] = host
+		i++
+	}
+
+	// now create a map of host links (a host linking to another host)
+	hostLinks := map[int64]int64{}
+	for srcUrl, dstUrl := range urlLinks {
+		srcHost := url2host[srcUrl]
+		dstHost := url2host[dstUrl]
+		srcHostId := host2id[srcHost]
+		dstHostId := host2id[dstHost]
+		hostLinks[srcHostId] = dstHostId
+	}
+
+	// map the ranks back to hostnames
+	ranks := pagerank(hostLinks)
+	for id, rank := range ranks {
+		hostname := id2host[id]
+		hostRanks[hostname] = rank
+	}
+
+	return
+}
+
 func main() {
 	fmt.Println("PageRank Calculator")
 
@@ -114,7 +148,7 @@ func main() {
 	fmt.Println("Reading links...")
 	rows, err := db.Query("select src_url_id, dst_url_id from links")
 	utils.PanicOnErr(err)
-	for i := 0; rows.Next(); i++ {
+	for rows.Next() {
 		var src, dst int64
 		err = rows.Scan(&src, &dst)
 		utils.PanicOnErr(err)
@@ -122,15 +156,49 @@ func main() {
 		links[src] = dst
 	}
 
-	ranks := pagerank(links)
+	urlRanks := pagerank(links)
+
+	// Now we'll normalize url ranks based on the domain ranks. To do that, we
+	// first need a mapping between url ids and hostnames.
+	fmt.Println("Reading hostnames...")
+	rows, err = db.Query("select id, hostname from urls")
+	url2host := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var host string
+		err = rows.Scan(&id, &host)
+		utils.PanicOnErr(err)
+		url2host[id] = host
+	}
+
+	fmt.Println("Calculating hostname ranks...")
+	hostRanks := getHostRanks(links, url2host)
+
+	fmt.Println("Normalizing url ranks based on hostname ranks...")
+	maxUrlRank := float64(0)
+	for id := range urlRanks {
+		hostname := url2host[id]
+		urlRanks[id] *= hostRanks[hostname]
+		if urlRanks[id] > maxUrlRank {
+			maxUrlRank = urlRanks[id]
+		}
+	}
+
+	// after normalizing based on host ranks, the top url is no longer ranked
+	// 1.0. So we normalize them again.
+	fmt.Println("Normalizing the final results...")
+	for id := range urlRanks {
+		urlRanks[id] /= maxUrlRank
+
+	}
 
 	fmt.Println("Writing ranks to database...")
-	urlIds := make([]int64, len(ranks))
-	urlRanks := make([]float64, len(ranks))
+	ids := make([]int64, len(urlRanks))
+	rs := make([]float64, len(urlRanks))
 	i := 0
-	for id, rank := range ranks {
-		urlIds[i] = id
-		urlRanks[i] = rank
+	for id, rank := range urlRanks {
+		ids[i] = id
+		rs[i] = rank
 		i++
 	}
 	q := `update urls
@@ -138,7 +206,7 @@ func main() {
           from
              (select unnest($1::bigint[]) id, unnest($2::real[]) rank) x
           where urls.id = x.id`
-	_, err = db.Exec(q, pq.Array(urlIds), pq.Array(urlRanks))
+	_, err = db.Exec(q, pq.Array(ids), pq.Array(rs))
 	utils.PanicOnErr(err)
 
 	fmt.Println("Done.")
