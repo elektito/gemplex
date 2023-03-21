@@ -404,7 +404,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 		contentId, r.statusCode, revisitTimeIncrementNoChange, maxRevisitTime, revisitTimeAfterChange, r.url,
 	).Scan(&urlId)
 	if err == sql.ErrNoRows {
-		fmt.Println("WARNING: URL not in the database, even though it should be; this is a bug!")
+		fmt.Printf("WARNING: URL not in the database, even though it should be; this is a bug! (%s)\n", r.url)
 		return
 	}
 	utils.PanicOnErr(err)
