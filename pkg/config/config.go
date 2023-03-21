@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
+	"github.com/elektito/gcrawler/pkg/utils"
 )
 
 type ConfigType struct {
@@ -34,7 +35,10 @@ func init() {
 		return
 	}
 
-	toml.DecodeReader(f, &Config)
+	_, err = toml.DecodeReader(f, &Config)
+	if err != nil {
+		utils.PanicOnErr(err)
+	}
 }
 
 func GetDbConnStr() string {
