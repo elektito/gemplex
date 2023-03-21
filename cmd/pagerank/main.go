@@ -179,6 +179,7 @@ func main() {
 	for id := range urlRanks {
 		hostname := url2host[id]
 		urlRanks[id] *= hostRanks[hostname]
+
 		if urlRanks[id] > maxUrlRank {
 			maxUrlRank = urlRanks[id]
 		}
@@ -192,7 +193,7 @@ func main() {
 
 	}
 
-	fmt.Println("Writing ranks to database...")
+	fmt.Println("Writing url ranks to database...")
 	ids := make([]int64, len(urlRanks))
 	rs := make([]float64, len(urlRanks))
 	i := 0
@@ -207,6 +208,24 @@ func main() {
              (select unnest($1::bigint[]) id, unnest($2::real[]) rank) x
           where urls.id = x.id`
 	_, err = db.Exec(q, pq.Array(ids), pq.Array(rs))
+	utils.PanicOnErr(err)
+
+	fmt.Println("Writing host ranks to database...")
+	hostnames := make([]string, len(hostRanks))
+	rs = make([]float64, len(hostRanks))
+	i = 0
+	for hostname, rank := range hostRanks {
+		hostnames[i] = hostname
+		rs[i] = rank
+		i++
+	}
+	q = `with hostranks as
+             (select unnest($1::text[]) hostname, unnest($2::real[]) rank)
+         insert into hosts (hostname, rank)
+         select * from hostranks
+         on conflict (hostname) do update
+         set rank = excluded.rank`
+	_, err = db.Exec(q, pq.Array(hostnames), pq.Array(rs))
 	utils.PanicOnErr(err)
 
 	fmt.Println("Done.")
