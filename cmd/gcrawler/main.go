@@ -515,11 +515,21 @@ func normalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
 
 	outputUrl, err = url.Parse(urlStr)
 
+	// remove trailing slash when the url points to the root of a hostname
+	if outputUrl.Path == "/" {
+		outputUrl.Path = ""
+	}
+
 	return
 }
 
 func isBlacklisted(link string, parsedLink *url.URL) bool {
 	blacklistedDomains := map[string]bool{
+		"hellomouse.net":        true,
+		"mirrors.apple2.org.za": true,
+		"godocs.io":             true,
+		"git.skyjake.fi":        true,
+		"taz.de":                true,
 		"localhost":             true,
 		"127.0.0.1":             true,
 		"guardian.shit.cx":      true,
