@@ -16,18 +16,17 @@ const (
 	epsilon = float64(0.0001)
 )
 
-type Link struct {
-	src int64
-	dst int64
-}
-
-func main() {
-	fmt.Println("PageRank Calculator")
-
-	db, err := sql.Open("postgres", config.GetDbConnStr())
-	utils.PanicOnErr(err)
-
-	links := make([]Link, 0)
+// Calculate pagerank given a set of links. The input "links" map, maps a node
+// id to another node id. As an example if links[1] == 2, then node 1 links to
+// node 2.
+//
+// Return value is a map that maps all node ids to a rank value in [0.0, 1.0]
+// range. The ranks are normalized so that the highest ranking node always has
+// the rank 1.0.
+func pagerank(links map[int64]int64) (ranks map[int64]float64) {
+	if len(links) == 0 {
+		return map[int64]float64{}
+	}
 
 	// map node ids to their out-degree (that is the number of nodes they link
 	// to)
@@ -36,24 +35,15 @@ func main() {
 	// set of all nodes
 	nodes := map[int64]bool{}
 
-	fmt.Println("Reading links...")
-	rows, err := db.Query("select src_url_id, dst_url_id from links")
-	utils.PanicOnErr(err)
-	for i := 0; rows.Next(); i++ {
-		var link Link
-		err = rows.Scan(&link.src, &link.dst)
-		utils.PanicOnErr(err)
+	for src, dst := range links {
+		outDegree[src] += 1
 
-		links = append(links, link)
-
-		outDegree[link.src] += 1
-
-		nodes[link.src] = true
-		nodes[link.dst] = true
+		nodes[src] = true
+		nodes[dst] = true
 	}
 
 	// map url id to rank
-	ranks := map[int64]float64{}
+	ranks = map[int64]float64{}
 	newRanks := map[int64]float64{}
 
 	// uniformly distribute 1.0 unit of rank to all nodes
@@ -65,11 +55,11 @@ func main() {
 	for i := 1; diff > epsilon; i++ {
 		fmt.Println("Start Iteration:", i)
 
-		for _, link := range links {
-			if link.src == link.dst { // ignore self-links
+		for src, dst := range links {
+			if src == dst { // ignore self-links
 				continue
 			}
-			newRanks[link.dst] += beta * (ranks[link.src] / outDegree[link.src])
+			newRanks[dst] += beta * (ranks[src] / outDegree[src])
 		}
 
 		// We distributed 1.0 unit worth of ranks between all nodes, but some
@@ -109,6 +99,30 @@ func main() {
 	for id := range ranks {
 		ranks[id] /= max
 	}
+
+	return
+}
+
+func main() {
+	fmt.Println("PageRank Calculator")
+
+	db, err := sql.Open("postgres", config.GetDbConnStr())
+	utils.PanicOnErr(err)
+
+	links := map[int64]int64{}
+
+	fmt.Println("Reading links...")
+	rows, err := db.Query("select src_url_id, dst_url_id from links")
+	utils.PanicOnErr(err)
+	for i := 0; rows.Next(); i++ {
+		var src, dst int64
+		err = rows.Scan(&src, &dst)
+		utils.PanicOnErr(err)
+
+		links[src] = dst
+	}
+
+	ranks := pagerank(links)
 
 	fmt.Println("Writing ranks to database...")
 	urlIds := make([]int64, len(ranks))
