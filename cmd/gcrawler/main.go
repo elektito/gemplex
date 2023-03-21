@@ -27,6 +27,7 @@ import (
 	"github.com/a-h/gemini"
 	"github.com/elektito/gcrawler/pkg/config"
 	_ "github.com/elektito/gcrawler/pkg/mgmt"
+	"github.com/elektito/gcrawler/pkg/utils"
 	_ "github.com/lib/pq"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
@@ -317,12 +318,6 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 	fmt.Printf("[%d] Exited visitor.\n", idx)
 }
 
-func panicOnErr(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
 func parseContentType(ct string) (contentType string, args string) {
 	parts := strings.SplitN(ct, ";", 2)
 	contentType = strings.TrimSpace(parts[0])
@@ -339,7 +334,7 @@ func calcContentHash(contents string) string {
 
 func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	tx, err := db.Begin()
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 
 	ct, ctArgs := parseContentType(r.contentType)
 	contentHash := calcContentHash(r.contents)
@@ -357,7 +352,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
                 `,
 		contentHash, r.contents, ct, ctArgs, r.title, r.visitTime,
 	).Scan(&contentId)
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 
 	var urlId int64
 	err = db.QueryRow(
@@ -376,7 +371,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 		fmt.Println("WARNING: URL not in the database, even though it should be; this is a bug!")
 		return
 	}
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 
 	for _, link := range r.links {
 		u, err := url.Parse(link)
@@ -390,22 +385,22 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
                      returning id`,
 			link, u.Hostname(),
 		).Scan(&destUrlId)
-		panicOnErr(err)
+		utils.PanicOnErr(err)
 
 		_, err = db.Exec(
 			`insert into links values ($1, $2)
                      on conflict do nothing`,
 			urlId, destUrlId)
-		panicOnErr(err)
+		utils.PanicOnErr(err)
 	}
 
 	err = tx.Commit()
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 }
 
 func updateDbRedirect(db *sql.DB, r VisitResult) {
 	tx, err := db.Begin()
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 
 	_, err = db.Exec(
 		`update urls set
@@ -417,7 +412,7 @@ func updateDbRedirect(db *sql.DB, r VisitResult) {
                  retry_time = case when redirect_target = $2 then retry_time * 2 else $3 end
                  where url = $4`,
 		r.statusCode, r.redirectTarget, minRedirectRetryAfterChange, r.url)
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 
 	u, err := url.Parse(r.redirectTarget)
 	if err != nil {
@@ -428,11 +423,11 @@ func updateDbRedirect(db *sql.DB, r VisitResult) {
 		_, err = db.Exec(
 			`insert into urls (url, hostname) values ($1, $2) on conflict do nothing`,
 			r.redirectTarget, u.Hostname())
-		panicOnErr(err)
+		utils.PanicOnErr(err)
 	}
 
 	err = tx.Commit()
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 }
 
 func updateDbPermanentError(db *sql.DB, r VisitResult) {
@@ -444,7 +439,7 @@ func updateDbPermanentError(db *sql.DB, r VisitResult) {
                  retry_time = $3
                  where url = $4`,
 		r.error.Error(), r.statusCode, permanentErrorRetry, r.url)
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 }
 
 func updateDbTempError(db *sql.DB, r VisitResult) {
@@ -457,12 +452,12 @@ func updateDbTempError(db *sql.DB, r VisitResult) {
                  retry_time = case when retry_time is null then $3 else least(retry_time * 2, $4) end
                  where url = $5`,
 		r.error.Error(), r.statusCode, tempErrorMinRetry, maxRevisitTime, r.url)
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 }
 
 func flusher(c <-chan VisitResult, done chan bool) {
 	db, err := sql.Open("postgres", config.GetDbConnStr())
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 	defer db.Close()
 
 loop:
@@ -616,7 +611,7 @@ loop:
 
 func getDueUrls(c chan<- string) {
 	db, err := sql.Open("postgres", config.GetDbConnStr())
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 	defer db.Close()
 
 	rows, err := db.Query(
@@ -626,7 +621,7 @@ func getDueUrls(c chan<- string) {
                        (status_code / 10 = 4 and last_visit_time + retry_time < now()) or
                        (last_visit_time is not null and last_visit_time + retry_time < now())`,
 	)
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 	defer rows.Close()
 	for rows.Next() {
 		var url string
@@ -769,7 +764,7 @@ loop:
 	}
 
 	f, err := os.Create("state.gc")
-	panicOnErr(err)
+	utils.PanicOnErr(err)
 	defer f.Close()
 
 	for i := 0; i < nprocs; i++ {
