@@ -8,13 +8,17 @@ import (
 	"github.com/elektito/gcrawler/pkg/config"
 	"github.com/elektito/gcrawler/pkg/utils"
 	"github.com/lib/pq"
-	_ "github.com/lib/pq"
 )
 
 const (
 	beta    = float64(0.85)
 	epsilon = float64(0.0001)
 )
+
+type Link struct {
+	src int64
+	dst int64
+}
 
 // Calculate pagerank given a set of links. The input "links" map, maps a node
 // id to another node id. As an example if links[1] == 2, then node 1 links to
@@ -23,7 +27,7 @@ const (
 // Return value is a map that maps all node ids to a rank value in [0.0, 1.0]
 // range. The ranks are normalized so that the highest ranking node always has
 // the rank 1.0.
-func pagerank(links map[int64]int64) (ranks map[int64]float64) {
+func pagerank(links []Link) (ranks map[int64]float64) {
 	if len(links) == 0 {
 		return map[int64]float64{}
 	}
@@ -35,11 +39,11 @@ func pagerank(links map[int64]int64) (ranks map[int64]float64) {
 	// set of all nodes
 	nodes := map[int64]bool{}
 
-	for src, dst := range links {
-		outDegree[src] += 1
+	for _, link := range links {
+		outDegree[link.src] += 1
 
-		nodes[src] = true
-		nodes[dst] = true
+		nodes[link.src] = true
+		nodes[link.dst] = true
 	}
 
 	// map url id to rank
@@ -55,11 +59,11 @@ func pagerank(links map[int64]int64) (ranks map[int64]float64) {
 	for i := 1; diff > epsilon; i++ {
 		fmt.Println("Start Iteration:", i)
 
-		for src, dst := range links {
-			if src == dst { // ignore self-links
+		for _, link := range links {
+			if link.src == link.dst { // ignore self-links
 				continue
 			}
-			newRanks[dst] += beta * (ranks[src] / outDegree[src])
+			newRanks[link.dst] += beta * (ranks[link.src] / outDegree[link.src])
 		}
 
 		// We distributed 1.0 unit worth of ranks between all nodes, but some
@@ -103,7 +107,7 @@ func pagerank(links map[int64]int64) (ranks map[int64]float64) {
 	return
 }
 
-func getHostRanks(urlLinks map[int64]int64, url2host map[int64]string) (hostRanks map[string]float64) {
+func getHostRanks(urlLinks []Link, url2host map[int64]string) (hostRanks map[string]float64) {
 	hostRanks = map[string]float64{}
 
 	// we need to assign a node id to each hostname in order to be able to call
@@ -112,19 +116,23 @@ func getHostRanks(urlLinks map[int64]int64, url2host map[int64]string) (hostRank
 	id2host := map[int64]string{}
 	i := int64(0)
 	for _, host := range url2host {
+		if _, ok := host2id[host]; ok {
+			// already assigned
+			continue
+		}
 		host2id[host] = i
 		id2host[i] = host
 		i++
 	}
 
 	// now create a map of host links (a host linking to another host)
-	hostLinks := map[int64]int64{}
-	for srcUrl, dstUrl := range urlLinks {
-		srcHost := url2host[srcUrl]
-		dstHost := url2host[dstUrl]
+	hostLinks := make([]Link, 0)
+	for _, link := range urlLinks {
+		srcHost := url2host[link.src]
+		dstHost := url2host[link.dst]
 		srcHostId := host2id[srcHost]
 		dstHostId := host2id[dstHost]
-		hostLinks[srcHostId] = dstHostId
+		hostLinks = append(hostLinks, Link{srcHostId, dstHostId})
 	}
 
 	// map the ranks back to hostnames
@@ -143,17 +151,17 @@ func main() {
 	db, err := sql.Open("postgres", config.GetDbConnStr())
 	utils.PanicOnErr(err)
 
-	links := map[int64]int64{}
+	links := make([]Link, 0)
 
 	fmt.Println("Reading links...")
 	rows, err := db.Query("select src_url_id, dst_url_id from links")
 	utils.PanicOnErr(err)
 	for rows.Next() {
-		var src, dst int64
-		err = rows.Scan(&src, &dst)
+		var link Link
+		err = rows.Scan(&link.src, &link.dst)
 		utils.PanicOnErr(err)
 
-		links[src] = dst
+		links = append(links, link)
 	}
 
 	urlRanks := pagerank(links)
@@ -190,7 +198,6 @@ func main() {
 	fmt.Println("Normalizing the final results...")
 	for id := range urlRanks {
 		urlRanks[id] /= maxUrlRank
-
 	}
 
 	fmt.Println("Writing url ranks to database...")
