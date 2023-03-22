@@ -45,21 +45,24 @@ const (
 )
 
 type VisitResult struct {
-	url            string
-	error          error
-	statusCode     int
-	links          []string
-	contents       string
-	contentType    string
-	redirectTarget string
-	title          string
-	visitTime      time.Time
+	url         string
+	error       error
+	statusCode  int
+	links       []string
+	contents    string
+	contentType string
+	title       string
+	visitTime   time.Time
 }
 
-func readGeminia(ctx context.Context, client *gemini.Client, u *url.URL) (body []byte, code int, meta string, err error) {
+func readGeminia(ctx context.Context, client *gemini.Client, u *url.URL, visitorIdx int) (body []byte, code int, meta string, err error) {
+	redirs := 0
+redirect:
 	resp, certs, auth, ok, err := client.RequestURL(ctx, u)
 	if err != nil {
-		fmt.Printf("Request error: ok=%t auth=%t certs=%d err=%s\n", ok, auth, len(certs), err)
+		fmt.Printf(
+			"[%d] Request error: ok=%t auth=%t certs=%d err=%s\n",
+			visitorIdx, ok, auth, len(certs), err)
 		return
 	}
 
@@ -80,7 +83,9 @@ func readGeminia(ctx context.Context, client *gemini.Client, u *url.URL) (body [
 
 	resp, certs, auth, ok, err = client.RequestURL(ctx, u)
 	if err != nil {
-		fmt.Printf("Request error: ok=%t auth=%t certs=%d err=%s\n", ok, auth, len(certs), err)
+		fmt.Printf(
+			"[%d] Request error: ok=%t auth=%t certs=%d err=%s\n",
+			visitorIdx, ok, auth, len(certs), err)
 		return
 	}
 
@@ -103,6 +108,26 @@ func readGeminia(ctx context.Context, client *gemini.Client, u *url.URL) (body [
 				return
 			}
 			return
+		}
+
+		if code/10 == 3 { // REDIRECT
+			var target *url.URL
+			target, err = url.Parse(meta)
+			if err != nil {
+				err = fmt.Errorf("Invalid redirect url '%s': %w", meta, err)
+				return
+			}
+
+			redirs++
+			if redirs == maxRedirects {
+				err = fmt.Errorf("Too many redirects")
+				return
+			}
+			fmt.Printf(
+				"[%d] Redirecting to: %s (from %s)\n",
+				visitorIdx, target.String(), u.String())
+			u = target
+			goto redirect
 		}
 
 		return
@@ -284,14 +309,12 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 	ctx := context.Background()
 	client := gemini.NewClient()
-	redir := 0
 
 	for urlStr := range urls {
-	retryRedirect:
 		fmt.Printf("[%d] Processing: %s\n", idx, urlStr)
 		u, _ := url.Parse(urlStr)
 
-		body, code, meta, err := readGeminia(ctx, client, u)
+		body, code, meta, err := readGeminia(ctx, client, u, idx)
 		if err != nil {
 			fmt.Println("Error: url=", urlStr, " ", err)
 			results <- VisitResult{
@@ -302,8 +325,7 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 			continue
 		}
 
-		switch {
-		case code == 20: // SUCCESS
+		if code/10 == 2 { // SUCCESS
 			contentType := meta
 			text, links, title, err := parsePage(body, u, contentType)
 			if err != nil {
@@ -319,29 +341,7 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 				title:       title,
 				visitTime:   time.Now(),
 			}
-		case code/10 == 3: // REDIRECT
-			redir += 1
-			if redir == maxRedirects {
-				results <- VisitResult{
-					url:        urlStr,
-					error:      fmt.Errorf("Too many redirects"),
-					statusCode: code,
-				}
-			} else {
-				target, err := makeUrlAbsolute(meta, urlStr)
-				if err != nil {
-					results <- VisitResult{
-						url:        urlStr,
-						error:      fmt.Errorf("Invalid redirect target: %s", meta),
-						statusCode: code,
-					}
-				} else {
-					urlStr = target
-					redir++
-					goto retryRedirect
-				}
-			}
-		default:
+		} else {
 			results <- VisitResult{
 				url:        urlStr,
 				error:      fmt.Errorf("STATUS: %d META: %s", code, meta),
