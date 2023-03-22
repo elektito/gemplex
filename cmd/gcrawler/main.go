@@ -631,7 +631,6 @@ func getDueUrls(c chan<- string) {
 	rows, err := db.Query(
 		`select url from urls
                  where last_visit_time is null or
-                       (status_code = 30 and last_visit_time + retry_time < now()) or
                        (status_code / 10 = 4 and last_visit_time + retry_time < now()) or
                        (last_visit_time is not null and last_visit_time + retry_time < now())`,
 	)
