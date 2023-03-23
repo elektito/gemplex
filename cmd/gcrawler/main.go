@@ -341,16 +341,23 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 			text, links, title, err := parsePage(body, u, contentType)
 			if err != nil {
 				fmt.Printf("Error parsing page: %s\n", err)
-				continue
-			}
-			results <- VisitResult{
-				url:         urlStr,
-				statusCode:  code,
-				links:       links,
-				contents:    text,
-				contentType: contentType,
-				title:       title,
-				visitTime:   time.Now(),
+				results <- VisitResult{
+					url:         urlStr,
+					statusCode:  code,
+					contentType: contentType,
+					visitTime:   time.Now(),
+					error:       err,
+				}
+			} else {
+				results <- VisitResult{
+					url:         urlStr,
+					statusCode:  code,
+					links:       links,
+					contents:    text,
+					contentType: contentType,
+					title:       title,
+					visitTime:   time.Now(),
+				}
 			}
 		} else {
 			results <- VisitResult{
@@ -480,7 +487,9 @@ loop:
 		select {
 		case r := <-c:
 			switch {
-			case r.statusCode/10 == 2:
+			// the error check in this clause is in case there was a
+			// parsing/encoding error after the page was successfully fetched.
+			case r.statusCode/10 == 2 && r.error == nil:
 				updateDbSuccessfulVisit(db, r)
 			case r.statusCode/10 == 5: // TEMPORARY ERROR
 				fallthrough
