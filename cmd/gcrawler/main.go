@@ -42,6 +42,8 @@ const (
 	maxRevisitTime               = "1 month"
 	minRedirectRetryAfterChange  = "1 week"
 	maxRedirects                 = 5
+	crawlerUserAgent             = "elektito/gcrawler"
+	robotsErrorWaitTime          = 1 * time.Hour
 )
 
 type VisitResult struct {
@@ -54,6 +56,15 @@ type VisitResult struct {
 	title       string
 	visitTime   time.Time
 }
+
+// error type used to say there was an error fetching robots.txt
+type RecentRobotsError struct{}
+
+func (e RecentRobotsError) Error() string {
+	return "Recent robots.txt error"
+}
+
+var _ error = (*RecentRobotsError)(nil)
 
 func readGeminia(ctx context.Context, client *gemini.Client, u *url.URL, visitorIdx int) (body []byte, code int, meta string, err error) {
 	redirs := 0
@@ -526,6 +537,16 @@ func normalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
 	return
 }
 
+func isBanned(parsedLink *url.URL, robotsPrefixes []string) bool {
+	for _, prefix := range robotsPrefixes {
+		if strings.HasPrefix(parsedLink.Path, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func isBlacklisted(link string, parsedLink *url.URL) bool {
 	blacklistedDomains := map[string]bool{
 		"hellomouse.net":        true,
@@ -645,7 +666,96 @@ func getDueUrls(c chan<- string) {
 	close(c)
 }
 
+func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorIdx int) (prefixes []string, err error) {
+	prefixes = make([]string, 0)
+
+	robotsUrl, err := url.Parse("gemini://" + u.Hostname() + "/robots.txt")
+	if err != nil {
+		return
+	}
+
+	body, code, _, err := readGeminia(context.Background(), client, robotsUrl, visitorIdx)
+	if err != nil {
+		return
+	}
+
+	if code/10 == 5 {
+		// no such file; return an empty list
+		return
+	}
+
+	if code/10 != 2 {
+		err = fmt.Errorf("Cannot read robots.txt for hostname %s: got code %d", u.Hostname(), code)
+		return
+	}
+
+	fmt.Println("Found robots.txt for:", u.String())
+
+	text := string(body)
+	lines := strings.Split(text, "\n")
+	curUserAgent := "*"
+	for _, line := range lines {
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		directive := "user-agent:"
+		if len(line) > len(directive) && strings.ToLower(line[:len(directive)]) == directive {
+			curUserAgent = strings.TrimSpace(line[len(directive):])
+			continue
+		}
+
+		switch curUserAgent {
+		case "*":
+		case crawlerUserAgent:
+		case "crawler":
+		case "indxer":
+		case "researcher":
+		default:
+			continue
+		}
+
+		directive = "disallow:"
+		if len(line) > len(directive) && strings.ToLower(line[:len(directive)]) == directive {
+			prefix := strings.TrimSpace(line[len(directive):])
+			prefixes = append(prefixes, prefix)
+			continue
+		}
+
+		// ignore everything else as required in the spec
+	}
+
+	return
+}
+
 func seeder(output chan<- string, done chan bool) {
+	client := gemini.NewClient()
+	robotsRules := map[string][]string{}
+	recentRobotsErrors := map[string]time.Time{}
+	getOrFetchRobotsPrefixes := func(u *url.URL) (results []string, err error) {
+		timestamp, ok := recentRobotsErrors[u.Hostname()]
+		if ok {
+			wait := time.Now().Sub(timestamp)
+			if wait > robotsErrorWaitTime {
+				delete(recentRobotsErrors, u.Hostname())
+			} else {
+				err = &RecentRobotsError{}
+				return
+			}
+		}
+
+		results, ok = robotsRules[u.Hostname()]
+		if !ok {
+			results, err = fetchRobotsRules(u, client, -1)
+			if err != nil {
+				recentRobotsErrors[u.Hostname()] = time.Now()
+				return
+			}
+			robotsRules[u.Hostname()] = results
+		}
+		return
+	}
+
 loop:
 	for {
 		c := make(chan string)
@@ -655,7 +765,21 @@ loop:
 			if err != nil {
 				continue
 			}
+
 			if isBlacklisted(urlString, urlParsed) {
+				continue
+			}
+
+			robotsPrefixes, err := getOrFetchRobotsPrefixes(urlParsed)
+			if err != nil {
+				if _, ok := err.(*RecentRobotsError); ok {
+					// don't report these so logs aren't spammed
+				} else {
+					fmt.Printf("Cannot read robots.txt for url %s: %s\n", urlString, err)
+				}
+				continue
+			}
+			if isBanned(urlParsed, robotsPrefixes) {
 				continue
 			}
 
