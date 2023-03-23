@@ -46,11 +46,16 @@ const (
 	robotsErrorWaitTime          = 1 * time.Hour
 )
 
+type Link struct {
+	url  string
+	text string
+}
+
 type VisitResult struct {
 	url         string
 	error       error
 	statusCode  int
-	links       []string
+	links       []Link
 	contents    string
 	contentType string
 	title       string
@@ -202,7 +207,7 @@ func makeUrlAbsolute(u string, base string) (result string, err error) {
 	return
 }
 
-func parsePage(body []byte, base *url.URL, contentType string) (text string, links []string, title string, err error) {
+func parsePage(body []byte, base *url.URL, contentType string) (text string, links []Link, title string, err error) {
 	text, err = convertToString(body, contentType)
 	if err != nil {
 		fmt.Printf("Error converting to string: url=%s content-type=%s: %s\n", base.String(), contentType, err)
@@ -305,7 +310,11 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 			continue
 		}
 
-		links = append(links, linkUrlStr)
+		link := Link{
+			url:  linkUrlStr,
+			text: linkText,
+		}
+		links = append(links, link)
 	}
 
 	if title == "" {
@@ -428,7 +437,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	utils.PanicOnErr(err)
 
 	for _, link := range r.links {
-		u, err := url.Parse(link)
+		u, err := url.Parse(link.url)
 		if err != nil {
 			continue
 		}
@@ -437,14 +446,14 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 			`insert into urls (url, hostname) values ($1, $2)
                      on conflict (url) do update set url = excluded.url
                      returning id`,
-			link, u.Hostname(),
+			link.url, u.Hostname(),
 		).Scan(&destUrlId)
 		utils.PanicOnErr(err)
 
 		_, err = db.Exec(
-			`insert into links values ($1, $2)
+			`insert into links values ($1, $2, $3)
                      on conflict do nothing`,
-			urlId, destUrlId)
+			urlId, destUrlId, link.text)
 		utils.PanicOnErr(err)
 	}
 
