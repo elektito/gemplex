@@ -510,7 +510,6 @@ func normalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
 		purell.FlagRemoveEmptyQuerySeparator |
 		purell.FlagRemoveDotSegments |
 		purell.FlagRemoveDuplicateSlashes |
-		purell.FlagSortQuery |
 		purell.FlagRemoveEmptyPortSeparator |
 		purell.FlagRemoveUnnecessaryHostDots
 	urlStr := purell.NormalizeURL(u, flags)
