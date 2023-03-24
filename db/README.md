@@ -20,8 +20,13 @@ migrate -database <POSTGRES_DB_URL> -path db/migrations up
 ## Database Backup
 
 You can use the provided `backup.sh` script to create daily, rotating backups.
-You can, for example, put the script in `/var/lib/cron.daily`, or run it using
+You can, for example, put the script in `/etc/cron.daily`, or run it using
 any cron-like facility.
+
+NOTE: If you intend to copy the file to directories like `/etc/cron.daily`, make
+sure you remove the `.sh` extension, since the `run-parts` program used to run
+the scripts in these directories, does not seem to like files with a dot in
+their names.
 
 The script uses the following environment variables (if present):
 
