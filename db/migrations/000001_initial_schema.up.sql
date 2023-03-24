@@ -40,7 +40,7 @@ create table links (
 
 -- insert seed urls
 insert into urls (url) values
-       ('gemini://elektito.com'),
+       ('gemini://elektito.com/'),
        ('gemini://medusae.space/index.gmi'),
-       ('gemini://gemini.circumlunar.space'),
+       ('gemini://gemini.circumlunar.space/'),
        ('gemini://gemini.conman.org/');
