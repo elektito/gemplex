@@ -655,7 +655,6 @@ loop:
 			}
 		case <-done:
 			break loop
-		default:
 		}
 	}
 
