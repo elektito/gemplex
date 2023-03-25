@@ -710,7 +710,8 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorIdx int) (prefix
 
 	text := string(body)
 	lines := strings.Split(text, "\n")
-	curUserAgent := "*"
+	curUserAgents := []string{"*"}
+	readingUserAgents := true
 	for _, line := range lines {
 		if strings.HasPrefix(line, "#") {
 			continue
@@ -718,25 +719,35 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorIdx int) (prefix
 
 		directive := "user-agent:"
 		if len(line) > len(directive) && strings.ToLower(line[:len(directive)]) == directive {
-			curUserAgent = strings.TrimSpace(line[len(directive):])
-			continue
-		}
-
-		switch curUserAgent {
-		case "*":
-		case crawlerUserAgent:
-		case "crawler":
-		case "indxer":
-		case "researcher":
-		default:
+			if !readingUserAgents {
+				curUserAgents = make([]string, 0)
+			}
+			readingUserAgents = true
+			curUserAgents = append(curUserAgents, strings.TrimSpace(line[len(directive):]))
 			continue
 		}
 
 		directive = "disallow:"
 		if len(line) > len(directive) && strings.ToLower(line[:len(directive)]) == directive {
+			readingUserAgents = false
 			prefix := strings.TrimSpace(line[len(directive):])
-			prefixes = append(prefixes, prefix)
-			continue
+
+		uaLoop:
+			for _, ua := range curUserAgents {
+				switch ua {
+				case "*":
+					fallthrough
+				case crawlerUserAgent:
+					fallthrough
+				case "crawler":
+					fallthrough
+				case "indexer":
+					fallthrough
+				case "researcher":
+					prefixes = append(prefixes, prefix)
+					break uaLoop
+				}
+			}
 		}
 
 		// ignore everything else as required in the spec
