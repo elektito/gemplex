@@ -115,7 +115,7 @@ redirect:
 
 		if code/10 == 2 { // SUCCESS response
 			if !strings.HasPrefix(resp.Header.Meta, "text/") {
-				err = fmt.Errorf("Not gemtext doc: %s", resp.Header.Meta)
+				err = fmt.Errorf("Non-text doc: %s", resp.Header.Meta)
 				return
 			}
 
