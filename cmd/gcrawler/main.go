@@ -246,8 +246,9 @@ func parsePage(body []byte, base *url.URL, contentType string) (text string, lin
 			title = strings.TrimSpace(line[1:])
 			if !isMostlyAlphanumeric(title) {
 				title = ""
+			} else {
+				foundCanonicalTitle = true
 			}
-			foundCanonicalTitle = true
 			continue
 		}
 
