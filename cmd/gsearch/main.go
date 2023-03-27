@@ -86,7 +86,7 @@ func gemRoot(c gig.Context) error {
 
 	text := renderSearchResults(results, dur, nresults, q)
 
-	return c.Gemini(text)
+	return c.GeminiBlob([]byte(text))
 }
 
 func renderSearchResults(results []SearchResult, dur time.Duration, nresults uint64, query string) string {

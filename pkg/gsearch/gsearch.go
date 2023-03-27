@@ -95,13 +95,6 @@ func NewIndex(path string) (idx bleve.Index, err error) {
 
 	docMapping := bleve.NewDocumentMapping()
 
-	urlFieldMapping := bleve.NewTextFieldMapping()
-	urlFieldMapping.Index = false
-	urlFieldMapping.Store = false
-	urlFieldMapping.IncludeTermVectors = false
-	urlFieldMapping.IncludeInAll = false
-	docMapping.AddFieldMappingsAt("Url", urlFieldMapping)
-
 	titleFieldMapping := bleve.NewTextFieldMapping()
 	docMapping.AddFieldMappingsAt("Title", titleFieldMapping)
 

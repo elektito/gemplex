@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/blevesearch/bleve/v2"
-	_ "github.com/blevesearch/bleve/v2/search/highlight/highlighter/ansi"
 	"github.com/elektito/gcrawler/pkg/config"
 	"github.com/elektito/gcrawler/pkg/gsearch"
 	"github.com/elektito/gcrawler/pkg/utils"
@@ -14,42 +12,8 @@ import (
 )
 
 func main() {
-	idxMapping := bleve.NewIndexMapping()
-
-	docMapping := bleve.NewDocumentMapping()
-
-	//urlFieldMapping := bleve.NewTextFieldMapping() // TODO ------------- maybe not include this, we can use .ID
-	//urlFieldMapping.Index = false
-	//docMapping.AddFieldMappingsAt("Url", urlFieldMapping)
-
-	titleFieldMapping := bleve.NewTextFieldMapping()
-	docMapping.AddFieldMappingsAt("Title", titleFieldMapping)
-
-	contentFieldMapping := bleve.NewTextFieldMapping()
-	docMapping.AddFieldMappingsAt("Content", contentFieldMapping)
-
-	linksFieldMapping := bleve.NewTextFieldMapping()
-	docMapping.AddFieldMappingsAt("Links", linksFieldMapping)
-
-	pageRankFieldMapping := bleve.NewNumericFieldMapping()
-	pageRankFieldMapping.Index = false
-	pageRankFieldMapping.IncludeInAll = false
-	pageRankFieldMapping.IncludeTermVectors = false
-	docMapping.AddFieldMappingsAt("PageRank", pageRankFieldMapping)
-
-	hostRankFieldMapping := bleve.NewNumericFieldMapping()
-	hostRankFieldMapping.Index = false
-	pageRankFieldMapping.IncludeInAll = false
-	pageRankFieldMapping.IncludeTermVectors = false
-	docMapping.AddFieldMappingsAt("HostRank", hostRankFieldMapping)
-
-	idxMapping.AddDocumentMapping("Page", docMapping)
-
-	index, err := bleve.New("idx.bleve", idxMapping)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	index, err := gsearch.NewIndex("idx.bleve")
+	utils.PanicOnErr(err)
 
 	dbConnStr := config.GetDbConnStr()
 	db, err := sql.Open("postgres", dbConnStr)
@@ -95,7 +59,4 @@ join hosts h on h.hostname = u.hostname
 	if batch.Size() > 0 {
 		index.Batch(batch)
 	}
-
-	// tweak score so that title has more weight
-	// mix scoring with pagerank
 }
