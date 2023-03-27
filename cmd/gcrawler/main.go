@@ -822,7 +822,7 @@ loop:
 		// since we just exhausted all urls, we'll wait a bit to allow for more
 		// urls to be added to the database.
 		select {
-		case <-time.After(1 * time.Second):
+		case <-time.After(10 * time.Second):
 		case <-done:
 			break loop
 		}
