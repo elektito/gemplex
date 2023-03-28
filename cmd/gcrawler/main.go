@@ -233,7 +233,10 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
                 `,
 		contentHash, r.contents, ct, ctArgs, r.title, r.visitTime,
 	).Scan(&contentId)
-	utils.PanicOnErr(err)
+	if err != nil {
+		fmt.Println("Database error when inserting contents for url:", r.url)
+		panic(err)
+	}
 
 	var urlId int64
 	err = db.QueryRow(
@@ -251,7 +254,10 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 		fmt.Printf("WARNING: URL not in the database, even though it should be; this is a bug! (%s)\n", r.url)
 		return
 	}
-	utils.PanicOnErr(err)
+	if err != nil {
+		fmt.Println("Database error when updating url info:", r.url)
+		panic(err)
+	}
 
 	for _, link := range r.links {
 		u, err := url.Parse(link.Url)
@@ -265,6 +271,9 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
                      returning id`,
 			link.Url, u.Hostname(),
 		).Scan(&destUrlId)
+		if err != nil {
+			fmt.Println("DB error inserting link url:", link.Url)
+		}
 		utils.PanicOnErr(err)
 
 		_, err = db.Exec(
