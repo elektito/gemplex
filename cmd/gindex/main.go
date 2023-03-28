@@ -25,7 +25,7 @@ with x as
     (select dst_url_id uid, array_agg(text) links
      from links
      group by dst_url_id)
-select u.url, c.title, c.content, x.links, u.rank, h.rank
+select u.url, c.title, c.content_text, x.links, u.rank, h.rank
 from x
 join urls u on u.id = uid
 join contents c on c.id = u.content_id

@@ -42,14 +42,15 @@ const (
 )
 
 type VisitResult struct {
-	url         string
-	error       error
-	statusCode  int
-	links       []gparse.Link
-	contents    string
-	contentType string
-	title       string
-	visitTime   time.Time
+	url          string
+	error        error
+	statusCode   int
+	links        []gparse.Link
+	contents     []byte
+	contentsText string
+	contentType  string
+	title        string
+	visitTime    time.Time
 }
 
 // error type used to say there was an error fetching robots.txt
@@ -176,13 +177,14 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 				}
 			} else {
 				results <- VisitResult{
-					url:         urlStr,
-					statusCode:  code,
-					links:       page.Links,
-					contents:    page.Text,
-					contentType: contentType,
-					title:       page.Title,
-					visitTime:   time.Now(),
+					url:          urlStr,
+					statusCode:   code,
+					links:        page.Links,
+					contents:     body,
+					contentsText: page.Text,
+					contentType:  contentType,
+					title:        page.Title,
+					visitTime:    time.Now(),
 				}
 			}
 		} else {
@@ -208,8 +210,8 @@ func parseContentType(ct string) (contentType string, args string) {
 	return
 }
 
-func calcContentHash(contents string) string {
-	hash := md5.Sum([]byte(contents))
+func calcContentHash(contents []byte) string {
+	hash := md5.Sum(contents)
 	return hex.EncodeToString(hash[:])
 }
 
@@ -225,13 +227,13 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	var contentId int64
 	err = db.QueryRow(
 		`insert into contents
-			    (hash, content, content_type, content_type_args, title, fetch_time)
-                values ($1, $2, $3, $4, $5, $6)
+			    (hash, content, content_text, content_type, content_type_args, title, fetch_time)
+                values ($1, $2, $3, $4, $5, $6, $7)
                 on conflict (hash)
                 do update set hash = excluded.hash
                 returning id
                 `,
-		contentHash, r.contents, ct, ctArgs, r.title, r.visitTime,
+		contentHash, r.contents, r.contentsText, ct, ctArgs, r.title, r.visitTime,
 	).Scan(&contentId)
 	if err != nil {
 		fmt.Println("Database error when inserting contents for url:", r.url)
