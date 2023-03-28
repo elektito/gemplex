@@ -197,6 +197,7 @@ func ParsePage(body []byte, base *url.URL, contentType string) (result Gemtext, 
 
 	switch {
 	case strings.HasPrefix(contentType, "text/plain"):
+		result.Text = text
 		result.Title, err = ParsePlain(text)
 		return
 	case strings.HasPrefix(contentType, "text/gemini"):
