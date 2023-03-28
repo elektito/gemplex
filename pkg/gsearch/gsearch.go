@@ -132,17 +132,27 @@ func OpenIndex(path string) (idx bleve.Index, err error) {
 }
 
 func Search(query string, idx bleve.Index, highlightStyle string) (results *bleve.SearchResult, err error) {
-	q := bleve.NewMatchQuery(query)
+	q1 := bleve.NewMatchQuery(query)
+	q1.SetField("Content")
+
+	q2 := bleve.NewMatchQuery(query)
+	q2.SetField("Title")
+	q2.SetBoost(2.0)
+
+	q := bleve.NewDisjunctionQuery(q1, q2)
+
 	s := bleve.NewSearchRequest(q)
 	s.Highlight = bleve.NewHighlightWithStyle(highlightStyle)
 	s.Fields = []string{"Title", "Content", "PageRank", "HostRank"}
-	ss := &RankedSort{
+
+	rs := &RankedSort{
 		desc:          true,
 		pageRankBytes: make([]byte, 0),
 		hostRankBytes: make([]byte, 0),
 	}
-	so := []search.SearchSort{ss}
+	so := []search.SearchSort{rs}
 	s.SortByCustom(so)
+
 	results, err = idx.Search(s)
 	return
 }
