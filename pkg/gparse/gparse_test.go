@@ -186,6 +186,7 @@ All in all very good.
 	expectedText := `cool ascii art
 H1
 This doc is all about h1.
+foobar
 References
 some refs:
 Refs
