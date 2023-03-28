@@ -76,6 +76,7 @@ func ParseGemtext(text string, base *url.URL) (result Gemtext) {
 
 	firstLine := ""
 	inPre := false
+	preText := ""
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		line = strings.TrimRight(line, " ")
@@ -86,11 +87,24 @@ func ParseGemtext(text string, base *url.URL) (result Gemtext) {
 				altText := matches[1]
 				s.WriteString(altText + "\n")
 			}
+			if !inPre {
+				preText = ""
+			}
+			if inPre {
+				// we're trying not to index ascii art, but do index normal text
+				// in a pre block
+				if looksLikeText(preText) {
+					s.WriteString(preText)
+				}
+			}
 			inPre = !inPre
 			continue
 		}
 
 		if inPre {
+			if isMostlyAlphanumeric(line) {
+				preText += line + "\n"
+			}
 			continue
 		}
 
@@ -194,6 +208,36 @@ func ParsePage(body []byte, base *url.URL, contentType string) (result Gemtext, 
 
 	result = ParseGemtext(text, base)
 	return
+}
+
+func looksLikeText(s string) bool {
+	if !isMostlyAlphanumeric(s) {
+		fmt.Println(1000)
+		return false
+	}
+
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		fmt.Println(2000)
+		return false
+	}
+
+	maxLen := 0
+	sum := 0
+	for _, w := range words {
+		if len(w) > maxLen {
+			maxLen = len(w)
+		}
+		sum += len(w)
+	}
+
+	avg := float64(sum) / float64(len(words))
+	if avg > 7 {
+		fmt.Println(3000)
+		return false
+	}
+
+	return true
 }
 
 func isMostlyAlphanumeric(s string) bool {
