@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"net/url"
 	"strings"
 	"text/template"
 	"time"
@@ -15,11 +16,13 @@ import (
 type SearchResult struct {
 	Id        int64
 	Url       string
+	Hostname  string
 	Title     string
 	Snippet   string
 	UrlRank   float64
 	HostRank  float64
 	Relevance float64
+	Verbose   bool
 }
 
 type Page struct {
@@ -28,6 +31,7 @@ type Page struct {
 	Title        string
 	Results      []SearchResult
 	TotalResults uint64
+	Verbose      bool
 }
 
 var idx bleve.Index
@@ -38,7 +42,8 @@ func main() {
 	utils.PanicOnErr(err)
 
 	g := gig.Default()
-	g.Handle("/", gemRoot)
+	g.Handle("/search", handleNonVerboseSearch)
+	g.Handle("/v/search", handleVerboseSearch)
 	err = g.Run("cert.pem", "key.pem")
 	utils.PanicOnErr(err)
 }
@@ -53,10 +58,17 @@ func search(q string, highlightStyle string) (results []SearchResult, dur time.D
 
 		// this make sure snippets don't expand on many lines, and also
 		// cruicially, formatted lines are not rendered in clients that do that.
-		snippet = " " + strings.Replace(snippet, "\n", " / ", -1)
+		snippet = " " + strings.Replace(snippet, "\n", "…", -1)
+
+		var hostname string
+		u, err := url.Parse(r.ID)
+		if err == nil {
+			hostname = u.Hostname()
+		}
 
 		result := SearchResult{
 			Url:       r.ID,
+			Hostname:  hostname,
 			Title:     r.Fields["Title"].(string),
 			Snippet:   snippet,
 			UrlRank:   r.Fields["PageRank"].(float64),
@@ -73,7 +85,15 @@ func search(q string, highlightStyle string) (results []SearchResult, dur time.D
 	return
 }
 
-func gemRoot(c gig.Context) error {
+func handleVerboseSearch(c gig.Context) error {
+	return handleSearch(c, true)
+}
+
+func handleNonVerboseSearch(c gig.Context) error {
+	return handleSearch(c, false)
+}
+
+func handleSearch(c gig.Context, verbose bool) error {
 	q, err := c.QueryString()
 	utils.PanicOnErr(err)
 
@@ -84,6 +104,10 @@ func gemRoot(c gig.Context) error {
 	results, dur, nresults := search(q, "gem")
 	utils.PanicOnErr(err)
 
+	for i := 0; i < len(results); i++ {
+		results[i].Verbose = verbose
+	}
+
 	text := renderSearchResults(results, dur, nresults, q)
 
 	return c.GeminiBlob([]byte(text))
@@ -92,11 +116,12 @@ func gemRoot(c gig.Context) error {
 func renderSearchResults(results []SearchResult, dur time.Duration, nresults uint64, query string) string {
 	t := `
 {{- define "SingleResult" }}
-=> {{ .Url }} {{ if .Title }} {{- .Title }} {{- else }} (Untitled) {{- end }}
-hrank: {{ .HostRank }}
-urank: {{ .UrlRank }}
-relevance: {{ .Relevance }}
-
+=> {{ .Url }} {{ if .Title }} {{- .Title }} {{- else }} [Untitled] {{- end }} {{ if .Hostname }} ({{ .Hostname }}) {{ end }}
+{{- if .Verbose }}
+* hrank: {{ .HostRank }}
+* urank: {{ .UrlRank }}
+* relevance: {{ .Relevance }}
+{{- end }}
 {{ .Snippet -}}
 {{ end }}
 
@@ -109,7 +134,7 @@ relevance: {{ .Relevance }}
 {{- define "Page" -}}
 # {{ .Title }}
 
-=> / search
+=> /search search
 
 Searching for: {{ .Query }}
 Found {{ .TotalResults }} result(s) in {{ .Duration }}.
