@@ -92,7 +92,7 @@ func gemRoot(c gig.Context) error {
 func renderSearchResults(results []SearchResult, dur time.Duration, nresults uint64, query string) string {
 	t := `
 {{- define "SingleResult" }}
-=> {{ .Url }} {{ .Title }}
+=> {{ .Url }} {{ if .Title }} {{- .Title }} {{- else }} (Untitled) {{- end }}
 hrank: {{ .HostRank }}
 urank: {{ .UrlRank }}
 relevance: {{ .Relevance }}
