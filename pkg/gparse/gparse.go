@@ -185,6 +185,8 @@ func ParseGemtext(text string, base *url.URL) (result Gemtext) {
 		result.Title = result.Title[:maxTitleLength]
 	}
 
+	result.Title = strings.ToValidUTF8(result.Title, "")
+
 	return
 }
 
