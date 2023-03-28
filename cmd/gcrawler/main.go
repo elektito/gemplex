@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"database/sql"
@@ -21,20 +20,16 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unicode"
 
-	"github.com/PuerkitoBio/purell"
 	"github.com/a-h/gemini"
 	"github.com/elektito/gcrawler/pkg/config"
+	"github.com/elektito/gcrawler/pkg/gparse"
 	_ "github.com/elektito/gcrawler/pkg/mgmt"
 	"github.com/elektito/gcrawler/pkg/utils"
 	_ "github.com/lib/pq"
-	"golang.org/x/net/html/charset"
-	"golang.org/x/text/transform"
 )
 
 const (
-	maxTitleLength               = 100
 	permanentErrorRetry          = "1 month"
 	tempErrorMinRetry            = "1 day"
 	revisitTimeIncrementNoChange = "2 days"
@@ -46,16 +41,11 @@ const (
 	robotsErrorWaitTime          = 1 * time.Hour
 )
 
-type Link struct {
-	url  string
-	text string
-}
-
 type VisitResult struct {
 	url         string
 	error       error
 	statusCode  int
-	links       []Link
+	links       []gparse.Link
 	contents    string
 	contentType string
 	title       string
@@ -153,180 +143,6 @@ redirect:
 	return
 }
 
-func convertToString(body []byte, contentType string) (s string, err error) {
-	encoding, _, _ := charset.DetermineEncoding(body, contentType)
-
-	reader := transform.NewReader(bytes.NewBuffer(body), encoding.NewEncoder())
-	docBytes, err := ioutil.ReadAll(reader)
-	if err != nil {
-		err = fmt.Errorf("Error converting text encoding: %w", err)
-		return
-	}
-
-	s = string(docBytes)
-
-	// postgres doesn't like null character in strings, even though it's valid
-	// utf-8.
-	s = strings.ReplaceAll(s, "\x00", "")
-
-	s = strings.ToValidUTF8(s, "")
-
-	return
-}
-
-func isMostlyAlphanumeric(s string) bool {
-	if s == "" {
-		return false
-	}
-
-	n := 0
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			n += 1
-		}
-	}
-
-	return float64(n)/float64(len(s)) > 0.6
-}
-
-func makeUrlAbsolute(u string, base string) (result string, err error) {
-	parsedUrl, err := url.Parse(u)
-	if err != nil {
-		return
-	}
-	parsedBase, err := url.Parse(base)
-	if err != nil {
-		return
-	}
-	parsedUrl = parsedBase.ResolveReference(parsedUrl)
-	parsedUrl, err = normalizeUrl(parsedUrl)
-	if err != nil {
-		return
-	}
-	result = parsedUrl.String()
-	return
-}
-
-func parsePage(body []byte, base *url.URL, contentType string) (text string, links []Link, title string, err error) {
-	text, err = convertToString(body, contentType)
-	if err != nil {
-		fmt.Printf("Error converting to string: url=%s content-type=%s: %s\n", base.String(), contentType, err)
-		return
-	}
-
-	switch {
-	case strings.HasPrefix(contentType, "text/gemini"):
-	case strings.HasPrefix(contentType, "text/plain"):
-	case strings.HasPrefix(contentType, "text/markdown"):
-	default:
-		err = fmt.Errorf("Cannot process text type: %s", contentType)
-		return
-	}
-
-	isGemtext := strings.HasPrefix(contentType, "text/gemini")
-	lines := strings.Split(text, "\n")
-	inPre := false
-	foundCanonicalTitle := false
-	for _, line := range lines {
-		if strings.HasPrefix(line, "```") {
-			inPre = !inPre
-			continue
-		}
-
-		if inPre {
-			continue
-		}
-
-		if strings.HasPrefix(line, "#") {
-			if title != "" && foundCanonicalTitle {
-				continue
-			}
-
-			line = strings.TrimSpace(line)
-			title = strings.TrimSpace(line[1:])
-			if !isMostlyAlphanumeric(title) {
-				title = ""
-			} else {
-				foundCanonicalTitle = true
-			}
-			continue
-		}
-
-		if !isGemtext || !strings.HasPrefix(line, "=>") {
-			if title != "" {
-				continue
-			}
-
-			title = strings.TrimSpace(line)
-			if len(title) > maxTitleLength {
-				title = title[:maxTitleLength]
-			}
-
-			if !isMostlyAlphanumeric(title) {
-				title = ""
-			}
-
-			continue
-		}
-
-		if !isGemtext {
-			continue
-		}
-
-		line = line[2:]
-		line = strings.TrimLeft(line, " ")
-		parts := strings.SplitN(line, " ", 2)
-		if len(parts) == 0 {
-			continue
-		}
-
-		linkUrlStr := strings.TrimSpace(parts[0])
-		linkUrlStr = strings.ToValidUTF8(linkUrlStr, "")
-
-		linkText := linkUrlStr
-		if len(parts) == 2 {
-			linkText = strings.TrimSpace(parts[1])
-		}
-
-		if title == "" {
-			title = linkText
-		}
-
-		linkUrl, err := url.Parse(linkUrlStr)
-		if err != nil {
-			continue
-		}
-
-		// convert relative urls to absolute
-		linkUrl = base.ResolveReference(linkUrl)
-
-		linkUrl, err = normalizeUrl(linkUrl)
-		if err != nil {
-			continue
-		}
-
-		linkUrlStr = linkUrl.String()
-
-		if linkUrl.Scheme != "gemini" {
-			continue
-		}
-
-		link := Link{
-			url:  linkUrlStr,
-			text: linkText,
-		}
-		links = append(links, link)
-	}
-
-	if title == "" {
-		title = base.String()
-	}
-
-	title = strings.ToValidUTF8(title, "")
-
-	return
-}
-
 func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 	ctx := context.Background()
 	client := gemini.NewClient()
@@ -348,7 +164,7 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 
 		if code/10 == 2 { // SUCCESS
 			contentType := meta
-			text, links, title, err := parsePage(body, u, contentType)
+			page, err := gparse.ParsePage(body, u, contentType)
 			if err != nil {
 				fmt.Printf("Error parsing page: %s\n", err)
 				results <- VisitResult{
@@ -362,10 +178,10 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 				results <- VisitResult{
 					url:         urlStr,
 					statusCode:  code,
-					links:       links,
-					contents:    text,
+					links:       page.Links,
+					contents:    page.Text,
 					contentType: contentType,
-					title:       title,
+					title:       page.Title,
 					visitTime:   time.Now(),
 				}
 			}
@@ -438,7 +254,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	utils.PanicOnErr(err)
 
 	for _, link := range r.links {
-		u, err := url.Parse(link.url)
+		u, err := url.Parse(link.Url)
 		if err != nil {
 			continue
 		}
@@ -447,14 +263,14 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 			`insert into urls (url, hostname) values ($1, $2)
                      on conflict (url) do update set url = excluded.url
                      returning id`,
-			link.url, u.Hostname(),
+			link.Url, u.Hostname(),
 		).Scan(&destUrlId)
 		utils.PanicOnErr(err)
 
 		_, err = db.Exec(
 			`insert into links values ($1, $2, $3)
                      on conflict do nothing`,
-			urlId, destUrlId, link.text)
+			urlId, destUrlId, link.Text)
 		utils.PanicOnErr(err)
 	}
 
@@ -523,37 +339,6 @@ func hashString(input string) uint64 {
 	h := fnv.New64()
 	h.Write([]byte(input))
 	return h.Sum64()
-}
-
-func normalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
-	// remove default gemini port, since purell only supports doing this with
-	// http and https.
-	if u.Scheme == "gemini" && u.Port() == "1965" {
-		u.Host = strings.ReplaceAll(u.Host, ":1965", "")
-	}
-
-	flags := purell.FlagLowercaseScheme |
-		purell.FlagLowercaseHost |
-		purell.FlagUppercaseEscapes |
-		purell.FlagDecodeUnnecessaryEscapes |
-		purell.FlagEncodeNecessaryEscapes |
-		purell.FlagRemoveEmptyQuerySeparator |
-		purell.FlagRemoveDotSegments |
-		purell.FlagRemoveDuplicateSlashes |
-		purell.FlagRemoveEmptyPortSeparator |
-		purell.FlagRemoveUnnecessaryHostDots
-	urlStr := purell.NormalizeURL(u, flags)
-
-	outputUrl, err = url.Parse(urlStr)
-
-	// make sure the root pages have a single slash as path (this seems more
-	// frequently seen in the wild, and so there's less chance we'll have to
-	// follow redirects from one to the other).
-	if outputUrl.Path == "" {
-		outputUrl.Path = "/"
-	}
-
-	return
 }
 
 func isBanned(parsedLink *url.URL, robotsPrefixes []string) bool {
