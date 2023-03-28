@@ -215,13 +215,11 @@ func ParsePage(body []byte, base *url.URL, contentType string) (result Gemtext, 
 
 func looksLikeText(s string) bool {
 	if !isMostlyAlphanumeric(s) {
-		fmt.Println(1000)
 		return false
 	}
 
 	words := strings.Fields(s)
 	if len(words) == 0 {
-		fmt.Println(2000)
 		return false
 	}
 
@@ -236,7 +234,6 @@ func looksLikeText(s string) bool {
 
 	avg := float64(sum) / float64(len(words))
 	if avg > 7 {
-		fmt.Println(3000)
 		return false
 	}
 
