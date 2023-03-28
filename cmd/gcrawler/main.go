@@ -71,7 +71,7 @@ func (e RecentRobotsError) Error() string {
 
 var _ error = (*RecentRobotsError)(nil)
 
-func readGeminia(ctx context.Context, client *gemini.Client, u *url.URL, visitorIdx int) (body []byte, code int, meta string, err error) {
+func readGemini(ctx context.Context, client *gemini.Client, u *url.URL, visitorIdx int) (body []byte, code int, meta string, err error) {
 	redirs := 0
 redirect:
 	resp, certs, auth, ok, err := client.RequestURL(ctx, u)
@@ -335,7 +335,7 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 		fmt.Printf("[%d] Processing: %s\n", idx, urlStr)
 		u, _ := url.Parse(urlStr)
 
-		body, code, meta, err := readGeminia(ctx, client, u, idx)
+		body, code, meta, err := readGemini(ctx, client, u, idx)
 		if err != nil {
 			fmt.Println("Error: url=", urlStr, " ", err)
 			results <- VisitResult{
@@ -692,7 +692,7 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorIdx int) (prefix
 		return
 	}
 
-	body, code, _, err := readGeminia(context.Background(), client, robotsUrl, visitorIdx)
+	body, code, _, err := readGemini(context.Background(), client, robotsUrl, visitorIdx)
 	if err != nil {
 		return
 	}
