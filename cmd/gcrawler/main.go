@@ -653,7 +653,7 @@ where not exists (
 		}
 
 		select {
-		case <-time.After(5 * time.Minute):
+		case <-time.After(15 * time.Minute):
 		case <-done:
 			break loop
 		}
