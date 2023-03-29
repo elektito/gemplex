@@ -262,6 +262,13 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 		panic(err)
 	}
 
+	// remove all existing links for this url
+	_, err = db.Exec(`delete from links where src_url_id = $1`, urlId)
+	if err != nil {
+		fmt.Println("Database error when deleting existing links for url:", r.url)
+		panic(err)
+	}
+
 	for _, link := range r.links {
 		u, err := url.Parse(link.Url)
 		if err != nil {
