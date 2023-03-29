@@ -62,14 +62,14 @@ func (e RecentRobotsError) Error() string {
 
 var _ error = (*RecentRobotsError)(nil)
 
-func readGemini(ctx context.Context, client *gemini.Client, u *url.URL, visitorIdx int) (body []byte, code int, meta string, err error) {
+func readGemini(ctx context.Context, client *gemini.Client, u *url.URL, visitorId string) (body []byte, code int, meta string, err error) {
 	redirs := 0
 redirect:
 	resp, certs, auth, ok, err := client.RequestURL(ctx, u)
 	if err != nil {
 		fmt.Printf(
-			"[%d] Request error: ok=%t auth=%t certs=%d err=%s\n",
-			visitorIdx, ok, auth, len(certs), err)
+			"[%s] Request error: ok=%t auth=%t certs=%d err=%s\n",
+			visitorId, ok, auth, len(certs), err)
 		return
 	}
 
@@ -91,8 +91,8 @@ redirect:
 	resp, certs, auth, ok, err = client.RequestURL(ctx, u)
 	if err != nil {
 		fmt.Printf(
-			"[%d] Request error: ok=%t auth=%t certs=%d err=%s\n",
-			visitorIdx, ok, auth, len(certs), err)
+			"[%s] Request error: ok=%t auth=%t certs=%d err=%s\n",
+			visitorId, ok, auth, len(certs), err)
 		return
 	}
 
@@ -131,8 +131,8 @@ redirect:
 				return
 			}
 			fmt.Printf(
-				"[%d] Redirecting to: %s (from %s)\n",
-				visitorIdx, target.String(), u.String())
+				"[%s] Redirecting to: %s (from %s)\n",
+				visitorId, target.String(), u.String())
 			u = target
 			goto redirect
 		}
@@ -144,15 +144,15 @@ redirect:
 	return
 }
 
-func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
+func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 	ctx := context.Background()
 	client := gemini.NewClient()
 
 	for urlStr := range urls {
-		fmt.Printf("[%d] Processing: %s\n", idx, urlStr)
+		fmt.Printf("[%s] Processing: %s\n", visitorId, urlStr)
 		u, _ := url.Parse(urlStr)
 
-		body, code, meta, err := readGemini(ctx, client, u, idx)
+		body, code, meta, err := readGemini(ctx, client, u, visitorId)
 		if err != nil {
 			fmt.Println("Error: url=", urlStr, " ", err)
 			results <- VisitResult{
@@ -198,7 +198,7 @@ func visitor(idx int, urls <-chan string, results chan<- VisitResult) {
 		time.Sleep(1 * time.Second)
 	}
 
-	fmt.Printf("[%d] Exited visitor.\n", idx)
+	fmt.Printf("[%s] Exited visitor.\n", visitorId)
 }
 
 func parseContentType(ct string) (contentType string, args string) {
@@ -480,7 +480,7 @@ func getDueUrls(c chan<- string) {
 	close(c)
 }
 
-func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorIdx int) (prefixes []string, err error) {
+func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (prefixes []string, err error) {
 	prefixes = make([]string, 0)
 
 	robotsUrl, err := url.Parse("gemini://" + u.Hostname() + "/robots.txt")
@@ -488,7 +488,7 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorIdx int) (prefix
 		return
 	}
 
-	body, code, _, err := readGemini(context.Background(), client, robotsUrl, visitorIdx)
+	body, code, _, err := readGemini(context.Background(), client, robotsUrl, visitorId)
 	if err != nil {
 		return
 	}
@@ -571,7 +571,7 @@ func seeder(output chan<- string, done chan bool) {
 
 		results, ok = robotsRules[u.Hostname()]
 		if !ok {
-			results, err = fetchRobotsRules(u, client, -1)
+			results, err = fetchRobotsRules(u, client, "seeder")
 			if err != nil {
 				recentRobotsErrors[u.Hostname()] = time.Now()
 				return
@@ -661,7 +661,7 @@ func main() {
 	visitResults := make(chan VisitResult, 10000)
 
 	for i := 0; i < nprocs; i += 1 {
-		go visitor(i, inputUrls[i], visitResults)
+		go visitor(strconv.Itoa(i), inputUrls[i], visitResults)
 	}
 
 	urlChan := make(chan string, 100000)
