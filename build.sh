@@ -4,3 +4,4 @@ go build ./cmd/gcrawler
 go build ./cmd/pagerank
 go build ./cmd/gsearch
 go build ./cmd/gindex
+go build ./cmd/update-titles
