@@ -381,6 +381,10 @@ func isBlacklisted(link string, parsedLink *url.URL) bool {
 
 	blacklistedPrefixes := []string{
 		"gemini://gemi.dev/cgi-bin/",
+		"gemini://kennedy.gemi.dev/archive/",
+		"gemini://kennedy.gemi.dev/search",
+		"gemini://kennedy.gemi.dev/mentions",
+		"gemini://kennedy.gemi.dev/cached",
 		"gemini://caolan.uk/cgi-bin/weather.py/wxfcs",
 		"gemini://illegaldrugs.net/cgi-bin/",
 		"gemini://hoagie.space/proxy/",
