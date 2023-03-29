@@ -212,3 +212,90 @@ hi
 		t.Fatalf("Expected title 'foobar'; got: %s", r.Title)
 	}
 }
+
+func TestParseRfcTwoLineTitle(t *testing.T) {
+	text := `Network Working Group                                         S. Deering
+Request for Comments: 2460                                         Cisco
+Obsoletes: 1883                                                R. Hinden
+Category: Standards Track                                          Nokia
+                                                           December 1998
+
+
+                  Internet Protocol, Version 6 (IPv6)
+                             Specification
+
+Status of this Memo
+
+   This document specifies an Internet standards track protocol for the
+   Internet community, and requests discussion and suggestions for
+   improvements.  Please refer to the current edition of the "Internet
+   Official Protocol Standards" (STD 1) for the standardization state
+   and status of this protocol.  Distribution of this memo is unlimited.
+
+Copyright Notice
+
+   Copyright (C) The Internet Society (1998).  All Rights Reserved.
+
+Abstract
+
+   This document specifies version 6 of the Internet Protocol (IPv6),
+   also sometimes referred to as IP Next Generation or IPng.`
+
+	title := parseRfc(text)
+	expected := "RFC 2460 - Internet Protocol, Version 6 (IPv6) Specification"
+	if title != expected {
+		t.Fatalf("Expected RFC title '%s', got '%s'", expected, title)
+	}
+}
+
+func TestParseRfcOneLineTitle(t *testing.T) {
+	text := `Internet Engineering Task Force (IETF)                      W. Eddy, Ed.
+STD: 7                                                       MTI Systems
+Request for Comments: 9293                                   August 2022
+Obsoletes: 793, 879, 2873, 6093, 6429, 6528,
+           6691
+Updates: 1011, 1122, 5961
+Category: Standards Track
+ISSN: 2070-1721
+
+
+                  Transmission Control Protocol (TCP)
+
+Abstract
+
+   This document specifies the Transmission Control Protocol (TCP).  TCP
+   is an important transport-layer protocol in the Internet protocol
+   stack, and it has continuously evolved over decades of use and growth
+   of the Internet.  Over this time, a number of changes have been made
+   to TCP as it was specified in RFC 793, though these have only been
+   documented in a piecemeal fashion.  This document collects and brings
+   those changes together with the protocol specification from RFC 793.
+   This document obsoletes RFC 793, as well as RFCs 879, 2873, 6093,
+   6429, 6528, and 6691 that updated parts of RFC 793.  It updates RFCs
+   1011 and 1122, and it should be considered as a replacement for the
+   portions of those documents dealing with TCP requirements.  It also
+   updates RFC 5961 by adding a small clarification in reset handling
+   while in the SYN-RECEIVED state.  The TCP header control bits from
+   RFC 793 have also been updated based on RFC 3168.
+
+Status of This Memo
+
+   This is an Internet Standards Track document.
+
+   This document is a product of the Internet Engineering Task Force`
+
+	title := parseRfc(text)
+	expected := "RFC 9293 - Transmission Control Protocol (TCP)"
+	if title != expected {
+		t.Fatalf("Expected RFC title '%s', got '%s'", expected, title)
+	}
+}
+
+func TestParseRfcNoMatch(t *testing.T) {
+	text := `foobar`
+
+	title := parseRfc(text)
+	if title != "" {
+		t.Fatalf("Expected non-matching text to return an empty title, instead got: %s", title)
+	}
+}

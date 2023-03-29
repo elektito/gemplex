@@ -40,12 +40,14 @@ var (
 	headingRe *regexp.Regexp
 	linkRe    *regexp.Regexp
 	preRe     *regexp.Regexp
+	rfcRe     *regexp.Regexp
 )
 
 func init() {
 	headingRe = regexp.MustCompile("^(#+) *(?P<heading>.+) *$")
 	linkRe = regexp.MustCompile("^=> *(?P<linkurl>.*?)(?: +(?P<linktext>.+))? *$")
 	preRe = regexp.MustCompile("^``` *(?P<prealt>.*)? *$")
+	rfcRe = regexp.MustCompile(`(?s)Request for Comments: (?P<rfc>\d+)(?P<rest>.+)(?:Status of this Memo|Abstract)`)
 }
 
 func ParsePlain(text string) (title string, err error) {
@@ -54,6 +56,14 @@ func ParsePlain(text string) (title string, err error) {
 	msg, err := mail.ReadMessage(r)
 	if err == nil {
 		title = msg.Header.Get("Subject")
+		if title != "" {
+			return
+		}
+	}
+
+	// if it's an rfc, parse it and get the rfc title
+	if len(text) > 1024 {
+		title = parseRfc(text[:1024])
 		if title != "" {
 			return
 		}
@@ -210,6 +220,44 @@ func ParsePage(body []byte, base *url.URL, contentType string) (result Gemtext, 
 	}
 
 	result = ParseGemtext(text, base)
+	return
+}
+
+func parseRfc(text string) (title string) {
+	m := rfcRe.FindStringSubmatch(text)
+	if m == nil {
+		return
+	}
+
+	rfcNum := m[1]
+	rest := m[2]
+
+	lines := strings.Split(rest, "\n")
+	started := false
+	for _, line := range lines {
+		if !started {
+			if line == "" {
+				started = true
+			}
+			continue
+		}
+
+		if line == "" && title == "" {
+			continue
+		}
+
+		if line == "" {
+			break
+		}
+
+		if title == "" {
+			title = strings.TrimSpace(line)
+		} else {
+			title += " " + strings.TrimSpace(line)
+		}
+	}
+
+	title = "RFC " + rfcNum + " - " + title
 	return
 }
 
