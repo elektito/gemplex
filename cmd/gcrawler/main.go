@@ -25,6 +25,7 @@ import (
 	"github.com/elektito/gcrawler/pkg/config"
 	"github.com/elektito/gcrawler/pkg/gparse"
 	_ "github.com/elektito/gcrawler/pkg/mgmt"
+	"github.com/elektito/gcrawler/pkg/pagerank"
 	"github.com/elektito/gcrawler/pkg/utils"
 	_ "github.com/lib/pq"
 )
@@ -662,6 +663,22 @@ where not exists (
 	fmt.Println("Exited cleaner.")
 }
 
+func periodicPageRank(done chan bool) {
+loop:
+	for {
+		pagerank.PerformPageRankOnDb()
+
+		select {
+		case <-time.After(60 * time.Minute):
+		case <-done:
+			break loop
+		}
+	}
+
+	done <- true
+	fmt.Println("Exited pagerank.")
+}
+
 func logSizeGroups(sizeGroups map[int]int) {
 	sortedSizes := make([]int, 0)
 	for k := range sizeGroups {
@@ -703,10 +720,12 @@ func main() {
 	seedDone := make(chan bool)
 	flushDone := make(chan bool)
 	cleanDone := make(chan bool)
+	pagerankDone := make(chan bool)
 	go coordinator(nprocs, inputUrls, urlChan, coordDone)
 	go seeder(urlChan, seedDone)
 	go flusher(visitResults, flushDone)
 	go cleaner(cleanDone)
+	go periodicPageRank(pagerankDone)
 
 	// setup signal handling
 	sigs := make(chan os.Signal, 1)
@@ -747,6 +766,8 @@ loop:
 	<-flushDone
 	cleanDone <- true
 	<-cleanDone
+	pagerankDone <- true
+	<-pagerankDone
 
 	fmt.Println("Closing channels...")
 	for _, c := range inputUrls {
