@@ -632,6 +632,36 @@ loop:
 	fmt.Println("Exited seeder.")
 }
 
+func cleaner(done chan bool) {
+	db, err := sql.Open("postgres", config.GetDbConnStr())
+	utils.PanicOnErr(err)
+	defer db.Close()
+
+loop:
+	for {
+		result, err := db.Exec(`
+delete from contents c
+where not exists (
+    select id from urls where content_id=c.id)`)
+		utils.PanicOnErr(err)
+
+		affected, err := result.RowsAffected()
+		utils.PanicOnErr(err)
+		if affected > 0 {
+			fmt.Printf("Removed %d dangling objects from contents table.\n", affected)
+		}
+
+		select {
+		case <-time.After(5 * time.Minute):
+		case <-done:
+			break loop
+		}
+	}
+
+	done <- true
+	fmt.Println("Exited cleaner.")
+}
+
 func logSizeGroups(sizeGroups map[int]int) {
 	sortedSizes := make([]int, 0)
 	for k := range sizeGroups {
@@ -672,9 +702,11 @@ func main() {
 	coordDone := make(chan bool)
 	seedDone := make(chan bool)
 	flushDone := make(chan bool)
+	cleanDone := make(chan bool)
 	go coordinator(nprocs, inputUrls, urlChan, coordDone)
 	go seeder(urlChan, seedDone)
 	go flusher(visitResults, flushDone)
+	go cleaner(cleanDone)
 
 	// setup signal handling
 	sigs := make(chan os.Signal, 1)
@@ -713,6 +745,8 @@ loop:
 	<-coordDone
 	flushDone <- true
 	<-flushDone
+	cleanDone <- true
+	<-cleanDone
 
 	fmt.Println("Closing channels...")
 	for _, c := range inputUrls {
