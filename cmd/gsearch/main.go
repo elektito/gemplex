@@ -2,12 +2,17 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"log"
 	"net/url"
+	"os"
+	"path"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/elektito/gcrawler/pkg/config"
 	"github.com/elektito/gcrawler/pkg/gsearch"
 	"github.com/elektito/gcrawler/pkg/utils"
 	"github.com/pitr/gig"
@@ -34,18 +39,141 @@ type Page struct {
 	Verbose      bool
 }
 
-var idx bleve.Index
+var curIdx bleve.Index
+var idx bleve.IndexAlias
+var idxReadyChan chan bool
 
 func main() {
-	var err error
-	idx, err = gsearch.OpenIndex("idx.bleve")
-	utils.PanicOnErr(err)
+	go periodicIndex()
+
+	idxReadyChan = make(chan bool)
+
+	log.Println("Waiting for index to be ready...")
+	<-idxReadyChan
+	log.Println("Index is ready.")
 
 	g := gig.Default()
 	g.Handle("/search", handleNonVerboseSearch)
 	g.Handle("/v/search", handleVerboseSearch)
-	err = g.Run("cert.pem", "key.pem")
+	err := g.Run(
+		config.GetBindAddrAndPort(),
+		config.Config.Capsule.CertFile,
+		config.Config.Capsule.KeyFile)
 	utils.PanicOnErr(err)
+}
+
+func loadInitialIndex() (chosenIdx bleve.Index, err error) {
+	pingFile := path.Join(config.Config.Index.Path, "ping.idx")
+	pongFile := path.Join(config.Config.Index.Path, "pong.idx")
+
+	_, err = os.Stat(pingFile)
+	pingExists := (err == nil)
+
+	_, err = os.Stat(pongFile)
+	pongExists := (err == nil)
+
+	err = nil
+
+	if pingExists && pongExists {
+		log.Println("Both ping and pong exist; checking...")
+		pingIdx, pingErr := gsearch.OpenIndex(pingFile, "ping")
+		pongIdx, pongErr := gsearch.OpenIndex(pongFile, "pong")
+		if pingErr == nil && pongErr != nil {
+			log.Println("Going with ping because there was an error opening pong.")
+			chosenIdx = pingIdx
+			return
+		} else if pongErr == nil && pingErr != nil {
+			log.Println("Going with pong because there was an error opening ping.")
+			chosenIdx = pongIdx
+			return
+		} else if pingErr != nil && pongErr != nil {
+			err = fmt.Errorf("Could not open either index file:\nping: %v\npong: %v", pingErr, pongErr)
+			return
+		}
+
+		pingCount, pingErr := pingIdx.DocCount()
+		pongCount, pongErr := pongIdx.DocCount()
+		if pingErr == nil && pongErr != nil {
+			log.Println("Going with ping because there was an error reading pong.")
+			chosenIdx = pingIdx
+			return
+		} else if pongErr == nil && pingErr != nil {
+			log.Println("Going with pong because there was an error reading ping.")
+			chosenIdx = pongIdx
+			return
+		} else if pingErr != nil && pongErr != nil {
+			err = fmt.Errorf("Could not read either index file:\nping: %v\npong: %v", pingErr, pongErr)
+			return
+		}
+
+		if pingCount > pongCount {
+			log.Printf(
+				"Choosing ping index since it has more documents (%d) than pong (%d).\n",
+				pingCount, pongCount)
+			chosenIdx = pingIdx
+		} else {
+			log.Printf(
+				"Choosing pong index since it has more documents (%d) than ping (%d).\n",
+				pongCount, pingCount)
+			chosenIdx = pongIdx
+		}
+	} else if pingExists {
+		log.Println("Opening ping index...")
+		chosenIdx, err = gsearch.OpenIndex(pingFile, "ping")
+	} else if pongExists {
+		log.Println("Opening pong index...")
+		chosenIdx, err = gsearch.OpenIndex(pongFile, "pong")
+	} else {
+		log.Println("No index available. Creating ping index...")
+		chosenIdx, err = gsearch.NewIndex(pingFile, "ping")
+		if err != nil {
+			return
+		}
+
+		err = gsearch.IndexDb(curIdx)
+	}
+
+	return
+}
+
+func periodicIndex() {
+	pingFile := path.Join(config.Config.Index.Path, "ping.idx")
+	pongFile := path.Join(config.Config.Index.Path, "pong.idx")
+
+	curIdx, err := loadInitialIndex()
+	utils.PanicOnErr(err)
+
+	idx = bleve.NewIndexAlias(curIdx)
+	idxReadyChan <- true
+
+	var newIdxFile string
+	var newIdxName string
+	for {
+		time.Sleep(1 * time.Hour)
+
+		if curIdx.Name() == "ping" {
+			newIdxFile = pingFile
+			newIdxName = "ping"
+		} else {
+			newIdxFile = pongFile
+			newIdxName = "pong"
+		}
+
+		err = os.RemoveAll(newIdxFile)
+		utils.PanicOnErr(err)
+
+		log.Println("Creating new index:", newIdxFile)
+		newIdx, err := gsearch.NewIndex(newIdxFile, newIdxName)
+		utils.PanicOnErr(err)
+
+		err = gsearch.IndexDb(newIdx)
+		utils.PanicOnErr(err)
+
+		idx.Swap([]bleve.Index{newIdx}, []bleve.Index{curIdx})
+		log.Println("Swapped in new index:", newIdxFile)
+
+		curIdx = newIdx
+	}
 }
 
 func search(q string, highlightStyle string) (results []SearchResult, dur time.Duration, nresults uint64) {

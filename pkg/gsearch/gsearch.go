@@ -1,13 +1,18 @@
 package gsearch
 
 import (
+	"database/sql"
+	"log"
 	"math"
+	"strings"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/numeric"
 	"github.com/blevesearch/bleve/v2/search"
 	_ "github.com/blevesearch/bleve/v2/search/highlight/highlighter/ansi"
+	"github.com/lib/pq"
 
+	"github.com/elektito/gcrawler/pkg/config"
 	"github.com/elektito/gcrawler/pkg/utils"
 )
 
@@ -90,7 +95,7 @@ func (so *RankedSort) Copy() search.SearchSort {
 	}
 }
 
-func NewIndex(path string) (idx bleve.Index, err error) {
+func NewIndex(path string, name string) (idx bleve.Index, err error) {
 	idxMapping := bleve.NewIndexMapping()
 
 	docMapping := bleve.NewDocumentMapping()
@@ -123,11 +128,77 @@ func NewIndex(path string) (idx bleve.Index, err error) {
 		return
 	}
 
+	idx.SetName(name)
 	return
 }
 
-func OpenIndex(path string) (idx bleve.Index, err error) {
+func OpenIndex(path string, name string) (idx bleve.Index, err error) {
 	idx, err = bleve.Open(path)
+	idx.SetName(name)
+	return
+}
+
+func IndexDb(index bleve.Index) (err error) {
+	dbConnStr := config.GetDbConnStr()
+	db, err := sql.Open("postgres", dbConnStr)
+	if err != nil {
+		return
+	}
+	defer db.Close()
+
+	q := `
+with x as
+    (select dst_url_id uid, array_agg(text) links
+     from links
+     group by dst_url_id)
+select u.url, c.title, c.content_text, x.links, u.rank, h.rank
+from x
+join urls u on u.id = uid
+join contents c on c.id = u.content_id
+join hosts h on h.hostname = u.hostname
+where u.rank is not null and h.rank is not null
+`
+
+	rows, err := db.Query(q)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	n := 1
+	batch := index.NewBatch()
+	for rows.Next() {
+		var doc Doc
+		var links pq.StringArray
+		var url string
+		err = rows.Scan(&url, &doc.Title, &doc.Content, &links, &doc.PageRank, &doc.HostRank)
+		if err != nil {
+			return
+		}
+
+		doc.Links = strings.Join(links, "\n")
+
+		batch.Index(url, doc)
+		if batch.Size() >= 10000 {
+			err = index.Batch(batch)
+			if err != nil {
+				return
+			}
+			batch.Reset()
+			log.Printf("Indexing progress: %d pages indexed so far.\n", n)
+		}
+
+		n++
+	}
+
+	if batch.Size() > 0 {
+		err = index.Batch(batch)
+		if err != nil {
+			return
+		}
+	}
+
+	log.Printf("Finished indexing: %d pages indexed.\n", n)
 	return
 }
 

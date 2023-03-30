@@ -1,4 +1,6 @@
 [db]
+# this section is used by both gcrawler and gsearch.
+#
 # the name of the database to use:
 # name = "gcrawler"
 #
@@ -16,3 +18,20 @@
 #
 # whether to use ssl to connect to the database or not:
 # sslmode = false
+
+[index]
+# this section is only used by gsearch.
+#
+# path = "."
+
+[capsule]
+# this section is only used by gsearch.
+#
+# certFile = "cert.pem"
+# keyFile = "key.pem"
+#
+# the port the server binds to
+# port = 1965
+#
+# the ip address the server binds to
+# address = 127.0.0.1
