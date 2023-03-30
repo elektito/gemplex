@@ -152,11 +152,11 @@ func periodicIndex() {
 		time.Sleep(1 * time.Hour)
 
 		if curIdx.Name() == "ping" {
-			newIdxFile = pingFile
-			newIdxName = "ping"
-		} else {
 			newIdxFile = pongFile
 			newIdxName = "pong"
+		} else {
+			newIdxFile = pingFile
+			newIdxName = "ping"
 		}
 
 		err = os.RemoveAll(newIdxFile)
