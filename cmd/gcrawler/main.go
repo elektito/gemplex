@@ -244,7 +244,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	var urlId int64
 	err = db.QueryRow(
 		`update urls set
-                 last_visit_time = now(),
+                 last_visited = now(),
                  content_id = $1,
                  error = null,
                  status_code = $2,
@@ -276,7 +276,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 		}
 		var destUrlId int64
 		err = db.QueryRow(
-			`insert into urls (url, hostname) values ($1, $2)
+			`insert into urls (url, hostname, first_added) values ($1, $2, now())
                      on conflict (url) do update set url = excluded.url
                      returning id`,
 			link.Url, u.Hostname(),
@@ -300,7 +300,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 func updateDbPermanentError(db *sql.DB, r VisitResult) {
 	_, err := db.Exec(
 		`update urls set
-                 last_visit_time = now(),
+                 last_visited = now(),
                  error = $1,
                  status_code = $2,
                  retry_time = $3
@@ -313,7 +313,7 @@ func updateDbTempError(db *sql.DB, r VisitResult) {
 	// exponential retry
 	_, err := db.Exec(
 		`update urls set
-                 last_visit_time = now(),
+                 last_visited = now(),
                  error = $1,
                  status_code = $2,
                  retry_time = case when retry_time is null then $3 else least(retry_time * 2, $4) end
@@ -478,9 +478,9 @@ func getDueUrls(c chan<- string) {
 
 	rows, err := db.Query(
 		`select url from urls
-                 where last_visit_time is null or
-                       (status_code / 10 = 4 and last_visit_time + retry_time < now()) or
-                       (last_visit_time is not null and last_visit_time + retry_time < now())`,
+                 where last_visited is null or
+                       (status_code / 10 = 4 and last_visited + retry_time < now()) or
+                       (last_visited is not null and last_visited + retry_time < now())`,
 	)
 	utils.PanicOnErr(err)
 	defer rows.Close()
