@@ -50,6 +50,7 @@ type VisitResult struct {
 	contents     []byte
 	contentsText string
 	contentType  string
+	contentLang  string
 	title        string
 	visitTime    time.Time
 }
@@ -184,6 +185,7 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 					contents:     body,
 					contentsText: page.Text,
 					contentType:  contentType,
+					contentLang:  page.Lang,
 					title:        page.Title,
 					visitTime:    time.Now(),
 				}
@@ -226,15 +228,20 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	// insert contents with a dummy update on conflict so that we can
 	// get the id even in case of already existing data.
 	var contentId int64
+	var lang sql.NullString
+	if r.contentLang != "" {
+		lang.String = r.contentLang
+		lang.Valid = true
+	}
 	err = db.QueryRow(
 		`insert into contents
-			    (hash, content, content_text, content_type, content_type_args, title, fetch_time)
-                values ($1, $2, $3, $4, $5, $6, $7)
+			    (hash, content, content_text, lang, content_type, content_type_args, title, fetch_time)
+                values ($1, $2, $3, $4, $5, $6, $7, $8)
                 on conflict (hash)
                 do update set hash = excluded.hash
                 returning id
                 `,
-		contentHash, r.contents, r.contentsText, ct, ctArgs, r.title, r.visitTime,
+		contentHash, r.contents, r.contentsText, r.contentLang, ct, ctArgs, r.title, r.visitTime,
 	).Scan(&contentId)
 	if err != nil {
 		fmt.Println("Database error when inserting contents for url:", r.url)

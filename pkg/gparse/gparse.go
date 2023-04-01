@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/PuerkitoBio/purell"
+	"github.com/retarus/whatlanggo"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
 )
@@ -34,6 +35,7 @@ type Gemtext struct {
 	Links    []Link
 	Headings []Heading
 	Title    string
+	Lang     string
 }
 
 var (
@@ -211,6 +213,7 @@ func ParsePage(body []byte, base *url.URL, contentType string) (result Gemtext, 
 	case strings.HasPrefix(contentType, "text/plain"):
 		result.Text = text
 		result.Title, err = ParsePlain(text)
+		result.Lang = detectLang(text)
 		return
 	case strings.HasPrefix(contentType, "text/gemini"):
 	case strings.HasPrefix(contentType, "text/markdown"):
@@ -220,7 +223,13 @@ func ParsePage(body []byte, base *url.URL, contentType string) (result Gemtext, 
 	}
 
 	result = ParseGemtext(text, base)
+	result.Lang = detectLang(result.Text)
 	return
+}
+
+func detectLang(text string) string {
+	info := whatlanggo.Detect(text)
+	return info.Lang.Iso6391()
 }
 
 func parseRfc(text string) (title string) {
