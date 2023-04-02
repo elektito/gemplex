@@ -136,7 +136,7 @@ func loadInitialIndex() (chosenIdx bleve.Index, err error) {
 			return
 		}
 
-		err = gsearch.IndexDb(curIdx)
+		err = gsearch.IndexDb(chosenIdx)
 	}
 
 	return
