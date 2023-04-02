@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -32,11 +33,14 @@ type SearchResult struct {
 
 type Page struct {
 	Query        string
+	QueryEscaped string
 	Duration     time.Duration
 	Title        string
 	Results      []SearchResult
 	TotalResults uint64
 	Verbose      bool
+	Page         int
+	PageCount    int
 }
 
 var curIdx bleve.Index
@@ -54,7 +58,9 @@ func main() {
 
 	g := gig.Default()
 	g.Handle("/search", handleNonVerboseSearch)
+	g.Handle("/search/:page", handleNonVerboseSearch)
 	g.Handle("/v/search", handleVerboseSearch)
+	g.Handle("/v/search/:page", handleVerboseSearch)
 	err := g.Run(
 		config.GetBindAddrAndPort(),
 		config.Config.Capsule.CertFile,
@@ -176,10 +182,10 @@ func periodicIndex() {
 	}
 }
 
-func search(q string, highlightStyle string) (results []SearchResult, dur time.Duration, nresults uint64) {
+func search(q string, highlightStyle string, page int) (results []SearchResult, dur time.Duration, nresults uint64) {
 	start := time.Now()
 
-	rr, err := gsearch.Search(q, idx, highlightStyle)
+	rr, err := gsearch.Search(q, idx, highlightStyle, page)
 	utils.PanicOnErr(err)
 	for _, r := range rr.Hits {
 		snippet := strings.Join(r.Fragments["Content"], "")
@@ -213,15 +219,40 @@ func search(q string, highlightStyle string) (results []SearchResult, dur time.D
 	return
 }
 
+func getPageIdx(c gig.Context) (page int, err error) {
+	pageStr := c.Param("page")
+	page = 0
+	if pageStr != "" {
+		page, err = strconv.Atoi(pageStr)
+		if err != nil || page < 1 {
+			err = fmt.Errorf("Invalid page")
+			return
+		}
+
+		// make it zero-based
+		page -= 1
+	}
+
+	return
+}
+
 func handleVerboseSearch(c gig.Context) error {
-	return handleSearch(c, true)
+	page, err := getPageIdx(c)
+	if err != nil {
+		return c.NoContent(gig.StatusPermanentFailure, err.Error())
+	}
+	return handleSearch(c, true, page)
 }
 
 func handleNonVerboseSearch(c gig.Context) error {
-	return handleSearch(c, false)
+	page, err := getPageIdx(c)
+	if err != nil {
+		return c.NoContent(gig.StatusPermanentFailure, err.Error())
+	}
+	return handleSearch(c, false, page)
 }
 
-func handleSearch(c gig.Context, verbose bool) error {
+func handleSearch(c gig.Context, verbose bool, page int) error {
 	q, err := c.QueryString()
 	utils.PanicOnErr(err)
 
@@ -229,19 +260,23 @@ func handleSearch(c gig.Context, verbose bool) error {
 		return c.NoContent(10, "Give me something!")
 	}
 
-	results, dur, nresults := search(q, "gem")
+	results, dur, nresults := search(q, "gem", page)
 	utils.PanicOnErr(err)
 
 	for i := 0; i < len(results); i++ {
 		results[i].Verbose = verbose
 	}
 
-	text := renderSearchResults(results, dur, nresults, q)
+	npages := int(nresults) / gsearch.PageSize
+	if nresults%gsearch.PageSize != 0 {
+		npages += 1
+	}
+	text := renderSearchResults(results, dur, nresults, q, page, npages)
 
 	return c.GeminiBlob([]byte(text))
 }
 
-func renderSearchResults(results []SearchResult, dur time.Duration, nresults uint64, query string) string {
+func renderSearchResults(results []SearchResult, dur time.Duration, nresults uint64, query string, page int, npages int) string {
 	t := `
 {{- define "SingleResult" }}
 => {{ .Url }} {{ if .Title }} {{- .Title }} {{- else }} [Untitled] {{- end }} {{ if .Hostname }} ({{ .Hostname }}) {{ end }}
@@ -267,19 +302,34 @@ func renderSearchResults(results []SearchResult, dur time.Duration, nresults uin
 Searching for: {{ .Query }}
 Found {{ .TotalResults }} result(s) in {{ .Duration }}.
 
-{{- template "Results" .Results -}}
+{{- template "Results" .Results }}
+{{- if gt .Page 1 }}
+=> /search/{{ dec .Page }}?{{ .Query }} Prev Page ({{ dec .Page }} of {{ .PageCount }} pages)
+{{- end }}
+{{- if lt .Page .PageCount }}
+=> /search/{{ inc .Page }}?{{ .Query }} Next Page ({{ inc .Page }} of {{ .PageCount }} pages)
+{{ end -}}
 
 {{ end }}
 
 {{- template "Page" . }}
 `
-	tmpl := template.Must(template.New("root").Parse(t))
+
+	funcMap := template.FuncMap{
+		"inc": func(n int) int { return n + 1 },
+		"dec": func(n int) int { return n - 1 },
+	}
+
+	tmpl := template.Must(template.New("root").Funcs(funcMap).Parse(t))
 	data := Page{
 		Query:        query,
+		QueryEscaped: url.QueryEscape(query),
 		Duration:     dur,
 		Title:        "Elektito's Gem-Search",
 		Results:      results,
 		TotalResults: nresults,
+		Page:         page + 1,
+		PageCount:    npages,
 	}
 	var w bytes.Buffer
 	err := tmpl.Execute(&w, data)

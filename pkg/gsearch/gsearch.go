@@ -16,9 +16,12 @@ import (
 	"github.com/elektito/gcrawler/pkg/utils"
 )
 
+const PageSize = 15
+
 type Doc struct {
 	Title    string
 	Content  string
+	Lang     string
 	Links    string
 	PageRank float64
 	HostRank float64
@@ -106,6 +109,11 @@ func NewIndex(path string, name string) (idx bleve.Index, err error) {
 	contentFieldMapping := bleve.NewTextFieldMapping()
 	docMapping.AddFieldMappingsAt("Content", contentFieldMapping)
 
+	langFieldMapping := bleve.NewKeywordFieldMapping()
+	langFieldMapping.IncludeInAll = false
+	langFieldMapping.IncludeTermVectors = false
+	docMapping.AddFieldMappingsAt("Lang", langFieldMapping)
+
 	linksFieldMapping := bleve.NewTextFieldMapping()
 	docMapping.AddFieldMappingsAt("Links", linksFieldMapping)
 
@@ -151,7 +159,7 @@ with x as
     (select dst_url_id uid, array_agg(text) links
      from links
      group by dst_url_id)
-select u.url, c.title, c.content_text, x.links, u.rank, h.rank
+select u.url, c.title, c.content_text, c.lang, x.links, u.rank, h.rank
 from x
 join urls u on u.id = uid
 join contents c on c.id = u.content_id
@@ -171,11 +179,17 @@ where u.rank is not null and h.rank is not null
 		var doc Doc
 		var links pq.StringArray
 		var url string
-		err = rows.Scan(&url, &doc.Title, &doc.Content, &links, &doc.PageRank, &doc.HostRank)
+		var lang sql.NullString
+		err = rows.Scan(&url, &doc.Title, &doc.Content, &lang, &links, &doc.PageRank, &doc.HostRank)
 		if err != nil {
 			return
 		}
 
+		if lang.Valid {
+			doc.Lang = lang.String
+		} else {
+			doc.Lang = ""
+		}
 		doc.Links = strings.Join(links, "\n")
 
 		batch.Index(url, doc)
@@ -202,7 +216,7 @@ where u.rank is not null and h.rank is not null
 	return
 }
 
-func Search(query string, idx bleve.Index, highlightStyle string) (results *bleve.SearchResult, err error) {
+func Search(query string, idx bleve.Index, highlightStyle string, page int) (results *bleve.SearchResult, err error) {
 	q1 := bleve.NewMatchQuery(query)
 	q1.SetField("Content")
 
@@ -223,6 +237,9 @@ func Search(query string, idx bleve.Index, highlightStyle string) (results *blev
 	}
 	so := []search.SearchSort{rs}
 	s.SortByCustom(so)
+
+	s.Size = PageSize
+	s.From = page * s.Size
 
 	results, err = idx.Search(s)
 	return
