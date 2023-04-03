@@ -4,13 +4,18 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 
+	"github.com/elektito/gcrawler/pkg/config"
 	"github.com/elektito/gcrawler/pkg/db"
+	"github.com/elektito/gcrawler/pkg/gparse"
+	"github.com/elektito/gcrawler/pkg/utils"
 	_ "github.com/lib/pq"
 )
 
 type Command struct {
+	Info       string
 	ShortUsage string
 	Handler    func([]string)
 }
@@ -20,8 +25,14 @@ var commands map[string]Command
 func init() {
 	commands = map[string]Command{
 		"url": {
+			Info:       "Display information about the given url",
 			ShortUsage: "[-substr] <url>",
 			Handler:    handleUrlInfoCommand,
+		},
+		"update-titles": {
+			Info:       "Re-parse all pages in db, re-calculate the title, and write it back to db.",
+			ShortUsage: "",
+			Handler:    handleUpdateTitlesCommand,
 		},
 	}
 }
@@ -118,11 +129,72 @@ func handleUrlInfoCommand(args []string) {
 	}
 }
 
+func handleUpdateTitlesCommand(args []string) {
+	// this sub-command re-parses all the contents in the database, checks if the
+	// title has changes, and if so, saves the new titles to the database again.
+	// This is useful, if our parsing algorithms change and we want to apply it
+	// to existing pages.
+
+	db, err := sql.Open("postgres", config.GetDbConnStr())
+	utils.PanicOnErr(err)
+	defer db.Close()
+
+	rows, err := db.Query(`
+select c.id, content, title, content_type, u.url
+from contents c
+join urls u on u.content_id=c.id
+`)
+	utils.PanicOnErr(err)
+	defer rows.Close()
+
+	changes := map[int64]string{}
+	i := 0
+	for rows.Next() {
+		var id int64
+		var blob []byte
+		var oldTitle string
+		var us string
+		var contentType string
+		rows.Scan(&id, &blob, &oldTitle, &contentType, &us)
+
+		u, _ := url.Parse(us)
+		rr, err := gparse.ParsePage(blob, u, contentType)
+		if err != nil {
+			continue
+		}
+
+		if rr.Title != oldTitle {
+			fmt.Printf("'%s' => '%s'  %s  %d\n", oldTitle, rr.Title, u.String(), id)
+			changes[id] = rr.Title
+		}
+
+		i++
+		if i%1000 == 0 {
+			fmt.Println("Progress:", i)
+		}
+	}
+
+	fmt.Printf("---- applying %d changes ----\n", len(changes))
+	i = 0
+	for id, newTitle := range changes {
+		_, err := db.Exec(`update contents set title = $1 where id = $2`, newTitle, id)
+		utils.PanicOnErr(err)
+
+		i++
+		if i%100 == 0 {
+			fmt.Printf("Progress: %d/%d\n", i, len(changes))
+		}
+	}
+
+	fmt.Printf("---- done: %d changes ----\n", len(changes))
+}
+
 func usage() {
 	fmt.Printf("Usage: %s <command> <command-args>\n", os.Args[0])
 	fmt.Println("Available commands:")
 	for name, cmd := range commands {
 		fmt.Printf(" - %s %s\n", name, cmd.ShortUsage)
+		fmt.Printf("   %s\n", cmd.Info)
 	}
 }
 
