@@ -11,7 +11,7 @@ import (
 	"unicode"
 
 	"github.com/PuerkitoBio/purell"
-	"github.com/retarus/whatlanggo"
+	"github.com/elektito/whatlanggo"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
 )

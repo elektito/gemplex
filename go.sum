@@ -44,6 +44,8 @@ github.com/blevesearch/zapx/v15 v15.3.9 h1:/s9zqKxFaZKQTTcMO2b/Tup0ch5MSztlvw+fr
 github.com/blevesearch/zapx/v15 v15.3.9/go.mod h1:m7Y6m8soYUvS7MjN9eKlz1xrLCcmqfFadmu7GhWIrLY=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+github.com/elektito/whatlanggo v1.1.1-elektito h1:fh+/6WOKDhXbSCyVizpkI3MeSTl0ItSRHgjWiHIShIk=
+github.com/elektito/whatlanggo v1.1.1-elektito/go.mod h1:y7KfCZxYm/aiEb5LIykiNdHQi9fWU4FitX1QBSlJPmE=
 github.com/golang/geo v0.0.0-20210211234256-740aa86cb551 h1:gtexQ/VGyN+VVFRXSFiguSNcXmS6rkKT+X7FdIrTtfo=
 github.com/golang/geo v0.0.0-20210211234256-740aa86cb551/go.mod h1:QZ0nwyI2jOfgRAoBvP+ab5aRr7c9x7lhGEJrKvBwjWI=
 github.com/golang/protobuf v1.3.2 h1:6nsPYzhq5kReh6QImI3k5qWzO4PEbvbIW2cwSfR/6xs=
@@ -63,8 +65,6 @@ github.com/pitr/gig v0.9.8 h1:N29T4spH/0MslqsIx8j+XU4IMI040xZJ2wJmoqA9UF4=
 github.com/pitr/gig v0.9.8/go.mod h1:YHUShtPtgG/zAsdlVG2HyzfGA1EKB+QBVFKxJ2qzxhU=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/retarus/whatlanggo v1.1.1 h1:lQ5N9D+v3Fr8fjpj6pTSwu26mqeB3CbY5Rn8mZIjqvY=
-github.com/retarus/whatlanggo v1.1.1/go.mod h1:zaHAbdsgJetjDQUSe0hWGjI3IUvaDoyWqci9J+sx860=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
 github.com/stretchr/testify v1.7.1 h1:5TQK59W5E3v0r2duFAb7P95B6hEeOyEnHRa8MjYSMTY=

@@ -7,9 +7,9 @@ require (
 	github.com/PuerkitoBio/purell v1.1.1
 	github.com/a-h/gemini v0.0.66
 	github.com/blevesearch/bleve/v2 v2.3.7
+	github.com/elektito/whatlanggo v1.1.1-elektito
 	github.com/lib/pq v1.10.7
 	github.com/pitr/gig v0.9.8
-	github.com/retarus/whatlanggo v1.1.1
 	golang.org/x/net v0.8.0
 	golang.org/x/text v0.8.0
 )
