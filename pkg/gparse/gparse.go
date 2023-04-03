@@ -30,7 +30,7 @@ type Heading struct {
 	Text  string
 }
 
-type Gemtext struct {
+type Page struct {
 	Text     string
 	Links    []Link
 	Headings []Heading
@@ -83,7 +83,7 @@ func ParsePlain(text string) (title string, err error) {
 	return
 }
 
-func ParseGemtext(text string, base *url.URL) (result Gemtext) {
+func ParseGemtext(text string, base *url.URL) (result Page) {
 	var s strings.Builder
 
 	firstLine := ""
@@ -211,7 +211,7 @@ func ParseGemtext(text string, base *url.URL) (result Gemtext) {
 	return
 }
 
-func ParsePage(body []byte, base *url.URL, contentType string) (result Gemtext, err error) {
+func ParsePage(body []byte, base *url.URL, contentType string) (result Page, err error) {
 	text, err := convertToString(body, contentType)
 	if err != nil {
 		fmt.Printf("Error converting to string: url=%s content-type=%s: %s\n", base.String(), contentType, err)

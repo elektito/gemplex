@@ -43,16 +43,13 @@ const (
 )
 
 type VisitResult struct {
-	url          string
-	error        error
-	statusCode   int
-	links        []gparse.Link
-	contents     []byte
-	contentsText string
-	contentType  string
-	contentLang  string
-	title        string
-	visitTime    time.Time
+	url         string
+	error       error
+	statusCode  int
+	page        gparse.Page
+	contents    []byte
+	contentType string
+	visitTime   time.Time
 }
 
 // error type used to say there was an error fetching robots.txt
@@ -179,15 +176,12 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 				}
 			} else {
 				results <- VisitResult{
-					url:          urlStr,
-					statusCode:   code,
-					links:        page.Links,
-					contents:     body,
-					contentsText: page.Text,
-					contentType:  contentType,
-					contentLang:  page.Lang,
-					title:        page.Title,
-					visitTime:    time.Now(),
+					url:         urlStr,
+					statusCode:  code,
+					page:        page,
+					contents:    body,
+					contentType: contentType,
+					visitTime:   time.Now(),
 				}
 			}
 		} else {
@@ -229,8 +223,8 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	// get the id even in case of already existing data.
 	var contentId int64
 	var lang sql.NullString
-	if r.contentLang != "" {
-		lang.String = r.contentLang
+	if r.page.Lang != "" {
+		lang.String = r.page.Lang
 		lang.Valid = true
 	}
 	err = db.QueryRow(
@@ -241,7 +235,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
                 do update set hash = excluded.hash
                 returning id
                 `,
-		contentHash, r.contents, r.contentsText, r.contentLang, ct, ctArgs, r.title, r.visitTime,
+		contentHash, r.contents, r.page.Text, r.page.Lang, ct, ctArgs, r.page.Title, r.visitTime,
 	).Scan(&contentId)
 	if err != nil {
 		fmt.Println("Database error when inserting contents for url:", r.url)
@@ -276,7 +270,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 		panic(err)
 	}
 
-	for _, link := range r.links {
+	for _, link := range r.page.Links {
 		u, err := url.Parse(link.Url)
 		if err != nil {
 			continue
