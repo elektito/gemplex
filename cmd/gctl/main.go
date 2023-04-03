@@ -15,7 +15,7 @@ import (
 	"github.com/elektito/gcrawler/pkg/gsearch"
 	"github.com/elektito/gcrawler/pkg/pagerank"
 	"github.com/elektito/gcrawler/pkg/utils"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 type Command struct {

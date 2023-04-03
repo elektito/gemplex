@@ -219,23 +219,30 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	ct, ctArgs := parseContentType(r.contentType)
 	contentHash := calcContentHash(r.contents)
 
-	// insert contents with a dummy update on conflict so that we can
-	// get the id even in case of already existing data.
 	var contentId int64
 	var lang sql.NullString
 	if r.page.Lang != "" {
 		lang.String = r.page.Lang
 		lang.Valid = true
 	}
+
+	var kind sql.NullString
+	if r.page.Kind != "" {
+		kind.String = r.page.Kind
+		kind.Valid = true
+	}
+
+	// insert contents with a dummy update on conflict so that we can
+	// get the id even in case of already existing data.
 	err = db.QueryRow(
 		`insert into contents
-			    (hash, content, content_text, lang, content_type, content_type_args, title, fetch_time)
-                values ($1, $2, $3, $4, $5, $6, $7, $8)
+			    (hash, content, content_text, lang, kind, content_type, content_type_args, title, fetch_time)
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 on conflict (hash)
                 do update set hash = excluded.hash
                 returning id
                 `,
-		contentHash, r.contents, r.page.Text, r.page.Lang, ct, ctArgs, r.page.Title, r.visitTime,
+		contentHash, r.contents, r.page.Text, r.page.Lang, kind, ct, ctArgs, r.page.Title, r.visitTime,
 	).Scan(&contentId)
 	if err != nil {
 		fmt.Println("Database error when inserting contents for url:", r.url)

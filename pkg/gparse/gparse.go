@@ -36,6 +36,7 @@ type Page struct {
 	Headings []Heading
 	Title    string
 	Lang     string
+	Kind     string
 }
 
 var (
@@ -52,11 +53,13 @@ func init() {
 	rfcRe = regexp.MustCompile(`(?s)Request for Comments: (?P<rfc>\d+)(?P<rest>.+)(?:Status of this Memo|Abstract)`)
 }
 
-func ParsePlain(text string) (title string, err error) {
+func ParsePlain(text string) (title string, kind string, err error) {
 	// if it's an email, parse it and use the subject line as title
 	r := strings.NewReader(text)
 	msg, err := mail.ReadMessage(r)
 	if err == nil {
+		kind = "email"
+
 		title = msg.Header.Get("Subject")
 		if title != "" {
 			return
@@ -67,6 +70,7 @@ func ParsePlain(text string) (title string, err error) {
 	if len(text) > 1024 {
 		title = parseRfc(text[:1024])
 		if title != "" {
+			kind = "rfc"
 			return
 		}
 	}
@@ -221,7 +225,7 @@ func ParsePage(body []byte, base *url.URL, contentType string) (result Page, err
 	switch {
 	case strings.HasPrefix(contentType, "text/plain"):
 		result.Text = text
-		result.Title, err = ParsePlain(text)
+		result.Title, result.Kind, err = ParsePlain(text)
 		result.Lang = detectLang(text)
 		return
 	case strings.HasPrefix(contentType, "text/gemini"):
