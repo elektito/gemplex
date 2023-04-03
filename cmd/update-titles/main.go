@@ -30,6 +30,7 @@ join urls u on u.content_id=c.id
 	defer rows.Close()
 
 	changes := map[int64]string{}
+	i := 0
 	for rows.Next() {
 		var id int64
 		var blob []byte
@@ -48,10 +49,15 @@ join urls u on u.content_id=c.id
 			fmt.Printf("'%s' => '%s'  %s  %d\n", oldTitle, rr.Title, u.String(), id)
 			changes[id] = rr.Title
 		}
+
+		i++
+		if i%1000 == 0 {
+			fmt.Println("Progress:", i)
+		}
 	}
 
 	fmt.Printf("---- applying %d changes ----\n", len(changes))
-	i := 0
+	i = 0
 	for id, newTitle := range changes {
 		_, err := db.Exec(`update contents set title = $1 where id = $2`, newTitle, id)
 		utils.PanicOnErr(err)
