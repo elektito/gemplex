@@ -41,6 +41,7 @@ type Page struct {
 	Verbose      bool
 	Page         int
 	PageCount    int
+	BaseUrl      string
 }
 
 var curIdx bleve.Index
@@ -271,12 +272,20 @@ func handleSearch(c gig.Context, verbose bool, page int) error {
 	if nresults%gsearch.PageSize != 0 {
 		npages += 1
 	}
-	text := renderSearchResults(results, dur, nresults, q, page, npages)
+
+	var baseUrl string
+	if verbose {
+		baseUrl = "/v"
+	} else {
+		baseUrl = ""
+	}
+
+	text := renderSearchResults(results, dur, nresults, q, page, npages, baseUrl)
 
 	return c.GeminiBlob([]byte(text))
 }
 
-func renderSearchResults(results []SearchResult, dur time.Duration, nresults uint64, query string, page int, npages int) string {
+func renderSearchResults(results []SearchResult, dur time.Duration, nresults uint64, query string, page int, npages int, baseUrl string) string {
 	t := `
 {{- define "SingleResult" }}
 => {{ .Url }} {{ if .Title }} {{- .Title }} {{- else }} [Untitled] {{- end }} {{ if .Hostname }} ({{ .Hostname }}) {{ end }}
@@ -297,17 +306,17 @@ func renderSearchResults(results []SearchResult, dur time.Duration, nresults uin
 {{- define "Page" -}}
 # {{ .Title }}
 
-=> /search search
+=> {{ .BaseUrl }}/search search
 
 Searching for: {{ .Query }}
 Found {{ .TotalResults }} result(s) in {{ .Duration }}.
 
 {{- template "Results" .Results }}
 {{- if gt .Page 1 }}
-=> /search/{{ dec .Page }}?{{ .Query }} Prev Page ({{ dec .Page }} of {{ .PageCount }} pages)
+=> {{ .BaseUrl }}/search/{{ dec .Page }}?{{ .Query }} Prev Page ({{ dec .Page }} of {{ .PageCount }} pages)
 {{- end }}
 {{- if lt .Page .PageCount }}
-=> /search/{{ inc .Page }}?{{ .Query }} Next Page ({{ inc .Page }} of {{ .PageCount }} pages)
+=> {{ .BaseUrl }}/search/{{ inc .Page }}?{{ .Query }} Next Page ({{ inc .Page }} of {{ .PageCount }} pages)
 {{ end -}}
 
 {{ end }}
@@ -330,6 +339,7 @@ Found {{ .TotalResults }} result(s) in {{ .Duration }}.
 		TotalResults: nresults,
 		Page:         page + 1,
 		PageCount:    npages,
+		BaseUrl:      baseUrl,
 	}
 	var w bytes.Buffer
 	err := tmpl.Execute(&w, data)
