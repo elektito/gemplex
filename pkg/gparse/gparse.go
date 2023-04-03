@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	maxTitleLength = 100
+	maxTitleLength = 72
 )
 
 type Link struct {
