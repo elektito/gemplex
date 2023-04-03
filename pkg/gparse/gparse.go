@@ -195,6 +195,15 @@ func ParseGemtext(text string, base *url.URL) (result Gemtext) {
 
 	if len(result.Title) > maxTitleLength {
 		result.Title = result.Title[:maxTitleLength]
+
+		if strings.HasSuffix(result.Title, " ") {
+			result.Title = strings.TrimSpace(result.Title)
+		} else if idx := strings.LastIndex(result.Title, " "); idx > 0 && idx > len(result.Title)-10 {
+			// the last word is likely incomplete, so we'll cut it.
+			result.Title = result.Title[:idx]
+		}
+
+		result.Title += "..."
 	}
 
 	result.Title = strings.ToValidUTF8(result.Title, "")
