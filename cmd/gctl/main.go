@@ -24,15 +24,15 @@ var commands map[string]Command
 
 func init() {
 	commands = map[string]Command{
-		"url": {
-			Info:       "Display information about the given url",
-			ShortUsage: "[-substr] <url>",
-			Handler:    handleUrlInfoCommand,
-		},
 		"update-titles": {
 			Info:       "Re-parse all pages in db, re-calculate the title, and write it back to db.",
 			ShortUsage: "",
 			Handler:    handleUpdateTitlesCommand,
+		},
+		"url": {
+			Info:       "Display information about the given url",
+			ShortUsage: "[-substr] <url>",
+			Handler:    handleUrlInfoCommand,
 		},
 	}
 }
