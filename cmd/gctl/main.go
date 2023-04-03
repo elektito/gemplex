@@ -3,18 +3,11 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"net/url"
 	"os"
 
-	"github.com/elektito/gcrawler/pkg/config"
-	"github.com/elektito/gcrawler/pkg/utils"
+	"github.com/elektito/gcrawler/pkg/db"
 	_ "github.com/lib/pq"
 )
-
-type Link struct {
-	Text string
-	Url  string
-}
 
 func main() {
 	if len(os.Args) != 2 {
@@ -23,92 +16,35 @@ func main() {
 	}
 
 	inputUrl := os.Args[1]
-
-	db, err := sql.Open("postgres", config.GetDbConnStr())
-	utils.PanicOnErr(err)
-	defer db.Close()
-
-	row := db.QueryRow(`
-select u.id, u.rank, h.rank, c.id, c.title, c.content_type, c.content_type_args, length(c.content), length(c.content_text)
-from urls u
-join hosts h on h.hostname = u.hostname
-join contents c on u.content_id = c.id
-where url = $1
-`, inputUrl)
-
-	var uid int64
-	var urank float64
-	var hrank float64
-	var cid sql.NullInt64
-	var title string
-	var ct string
-	var cta string
-	var clen int
-	var tlen int
-	err = row.Scan(&uid, &urank, &hrank, &cid, &title, &ct, &cta, &clen, &tlen)
+	info, err := db.QueryUrl(inputUrl)
 	if err == sql.ErrNoRows {
 		fmt.Println("Not found.")
 		os.Exit(1)
 	} else if err != nil {
-		fmt.Println("Error:", err)
-		os.Exit(1)
+		panic(err)
 	}
 
 	fmt.Println("URL:", inputUrl)
-	fmt.Printf("uid: %d  urank: %f\n", uid, urank)
+	fmt.Printf("uid: %d  urank: %f  hrank: %f\n", info.UrlId, info.UrlRank, info.HostRank)
 
-	if cid.Valid {
-		fmt.Printf("cid: %d  title: %s\n", cid.Int64, title)
-		fmt.Printf("content-type: %s", ct)
-		if cta != "" {
-			fmt.Printf("  args: %s", cta)
+	if info.ContentId >= 0 {
+		fmt.Printf("cid: %d  title: %s\n", info.ContentId, info.ContentTitle)
+		fmt.Printf("content-type: %s", info.ContentType)
+		if info.ContentTypeArgs != "" {
+			fmt.Printf("  args: %s", info.ContentTypeArgs)
 		}
 		fmt.Print("\n")
-		fmt.Printf("content-length: %d  text-length: %d\n", clen, tlen)
+		fmt.Printf("content-length: %d  text-length: %d\n", len(info.Contents), len(info.ContentsText))
 	} else {
 		fmt.Println("No content.")
 	}
 
-	u, err := url.Parse(inputUrl)
-	utils.PanicOnErr(err)
-
-	// links
-
-	rows, err := db.Query(`
-select u.url, links.text
-from links
-join urls u on u.id = dst_url_id
-where src_url_id = $1
-`, uid)
-	if err != nil {
-		fmt.Println("Error:", err)
-		os.Exit(1)
-	}
-
-	internalLinks := make([]Link, 0)
-	externalLinks := make([]Link, 0)
-	for rows.Next() {
-		var durl string
-		var linkText string
-		err = rows.Scan(&durl, &linkText)
-		utils.PanicOnErr(err)
-
-		du, err := url.Parse(durl)
-		utils.PanicOnErr(err)
-
-		if du.Hostname() == u.Hostname() {
-			internalLinks = append(internalLinks, Link{Text: linkText, Url: durl})
-		} else {
-			externalLinks = append(externalLinks, Link{Text: linkText, Url: durl})
-		}
-	}
-
 	fmt.Println()
-	if len(internalLinks) == 0 {
+	if len(info.InternalLinks) == 0 {
 		fmt.Println("No internal links.")
 	} else {
-		fmt.Printf("%d internal links:\n", len(internalLinks))
-		for _, link := range internalLinks {
+		fmt.Printf("%d internal links:\n", len(info.InternalLinks))
+		for _, link := range info.InternalLinks {
 			if link.Text == "" {
 				fmt.Printf(" - %s\n", link.Url)
 			} else {
@@ -118,11 +54,11 @@ where src_url_id = $1
 	}
 
 	fmt.Println()
-	if len(externalLinks) == 0 {
+	if len(info.ExternalLinks) == 0 {
 		fmt.Println("No external links.")
 	} else {
-		fmt.Printf("%d external links:\n", len(externalLinks))
-		for _, link := range externalLinks {
+		fmt.Printf("%d external links:\n", len(info.ExternalLinks))
+		for _, link := range info.ExternalLinks {
 			if link.Text == "" {
 				fmt.Printf(" - %s\n", link.Url)
 			} else {
@@ -131,43 +67,12 @@ where src_url_id = $1
 		}
 	}
 
-	// backlinks
-
-	rows, err = db.Query(`
-select u.url, links.text
-from links
-join urls u on u.id = src_url_id
-where dst_url_id = $1
-`, uid)
-	if err != nil {
-		fmt.Println("Error:", err)
-		os.Exit(1)
-	}
-
-	internalBacklinks := make([]Link, 0)
-	externalBacklinks := make([]Link, 0)
-	for rows.Next() {
-		var durl string
-		var linkText string
-		err = rows.Scan(&durl, &linkText)
-		utils.PanicOnErr(err)
-
-		du, err := url.Parse(durl)
-		utils.PanicOnErr(err)
-
-		if du.Hostname() == u.Hostname() {
-			internalBacklinks = append(internalBacklinks, Link{Text: linkText, Url: durl})
-		} else {
-			externalBacklinks = append(externalBacklinks, Link{Text: linkText, Url: durl})
-		}
-	}
-
 	fmt.Println()
-	if len(internalBacklinks) == 0 {
+	if len(info.InternalBacklinks) == 0 {
 		fmt.Println("No internal backlinks.")
 	} else {
-		fmt.Printf("%d internal backlinks:\n", len(internalBacklinks))
-		for _, link := range internalBacklinks {
+		fmt.Printf("%d internal backlinks:\n", len(info.InternalBacklinks))
+		for _, link := range info.InternalBacklinks {
 			if link.Text == "" {
 				fmt.Printf(" - %s\n", link.Url)
 			} else {
@@ -177,11 +82,11 @@ where dst_url_id = $1
 	}
 
 	fmt.Println()
-	if len(externalBacklinks) == 0 {
+	if len(info.ExternalBacklinks) == 0 {
 		fmt.Println("No external backlinks.")
 	} else {
-		fmt.Printf("%d external backlinks:\n", len(externalBacklinks))
-		for _, link := range externalBacklinks {
+		fmt.Printf("%d external backlinks:\n", len(info.ExternalBacklinks))
+		for _, link := range info.ExternalBacklinks {
 			if link.Text == "" {
 				fmt.Printf(" - %s\n", link.Url)
 			} else {
