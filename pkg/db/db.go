@@ -9,6 +9,7 @@ import (
 )
 
 type UrlInfo struct {
+	Url               string
 	UrlId             int64
 	UrlRank           float64
 	HostRank          float64
@@ -24,23 +25,32 @@ type UrlInfo struct {
 	ExternalBacklinks []gparse.Link
 }
 
-func QueryUrl(urlStr string) (info UrlInfo, err error) {
+func QueryUrl(urlStr string, substr bool) (info UrlInfo, err error) {
 	db, err := sql.Open("postgres", config.GetDbConnStr())
 	if err != nil {
 		return
 	}
 	defer db.Close()
 
-	row := db.QueryRow(`
-select u.id, u.rank, h.rank, c.id, c.title, c.content_type, c.content_type_args, length(c.content), length(c.content_text)
+	var whereClause string
+	if substr {
+		whereClause = "u.url like '%' || $1 || '%'"
+	} else {
+		whereClause = "u.url = $1"
+	}
+
+	q := `
+select u.url, u.id, u.rank, h.rank, c.id, c.title, c.content_type, c.content_type_args, length(c.content), length(c.content_text)
 from urls u
 join hosts h on h.hostname = u.hostname
 join contents c on u.content_id = c.id
-where url = $1
-`, urlStr)
+where ` + whereClause
+
+	row := db.QueryRow(q, urlStr)
 
 	var cid sql.NullInt64
 	err = row.Scan(
+		&info.Url,
 		&info.UrlId,
 		&info.UrlRank,
 		&info.HostRank,
@@ -60,7 +70,7 @@ where url = $1
 		info.ContentId = -1
 	}
 
-	u, err := url.Parse(urlStr)
+	u, err := url.Parse(info.Url)
 	if err != nil {
 		return
 	}

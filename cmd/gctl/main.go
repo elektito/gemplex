@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"flag"
 	"fmt"
 	"os"
 
@@ -9,14 +10,35 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func main() {
-	if len(os.Args) != 2 {
-		fmt.Printf("Usage: %s <url>\n", os.Args[0])
+type Command struct {
+	ShortUsage string
+	Handler    func([]string)
+}
+
+var commands map[string]Command
+
+func init() {
+	commands = map[string]Command{
+		"url": {
+			ShortUsage: "[-substr] <url>",
+			Handler:    handleUrlInfoCommand,
+		},
+	}
+}
+
+func handleUrlInfoCommand(args []string) {
+	fs := flag.NewFlagSet("url", flag.ExitOnError)
+
+	substr := fs.Bool("substr", false, "Search for the given substring in urls; first will be picked.")
+
+	fs.Parse(args)
+	if fs.NArg() != 1 {
+		usage()
 		os.Exit(1)
 	}
 
-	inputUrl := os.Args[1]
-	info, err := db.QueryUrl(inputUrl)
+	inputUrl := fs.Arg(0)
+	info, err := db.QueryUrl(inputUrl, *substr)
 	if err == sql.ErrNoRows {
 		fmt.Println("Not found.")
 		os.Exit(1)
@@ -24,7 +46,7 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("URL:", inputUrl)
+	fmt.Println("URL:", info.Url)
 	fmt.Printf("uid: %d  urank: %f  hrank: %f\n", info.UrlId, info.UrlRank, info.HostRank)
 
 	if info.ContentId >= 0 {
@@ -94,4 +116,28 @@ func main() {
 			}
 		}
 	}
+}
+
+func usage() {
+	fmt.Printf("Usage: %s <command> <command-args>\n", os.Args[0])
+	fmt.Println("Available commands:")
+	for name, cmd := range commands {
+		fmt.Printf(" - %s %s\n", name, cmd.ShortUsage)
+	}
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		usage()
+		os.Exit(1)
+	}
+
+	cmd, ok := commands[os.Args[1]]
+	if !ok {
+		fmt.Println("Unknown command:", cmd)
+		usage()
+		os.Exit(1)
+	}
+
+	cmd.Handler(os.Args[2:])
 }
