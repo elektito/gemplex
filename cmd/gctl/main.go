@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
+	"strings"
 
 	"github.com/elektito/gcrawler/pkg/config"
 	"github.com/elektito/gcrawler/pkg/db"
 	"github.com/elektito/gcrawler/pkg/gparse"
+	"github.com/elektito/gcrawler/pkg/gsearch"
 	"github.com/elektito/gcrawler/pkg/utils"
 	_ "github.com/lib/pq"
 )
@@ -24,6 +27,11 @@ var commands map[string]Command
 
 func init() {
 	commands = map[string]Command{
+		"index": {
+			Info:       "Index the contents of the database",
+			ShortUsage: "<index-dir>",
+			Handler:    handleIndexCommand,
+		},
 		"update-titles": {
 			Info:       "Re-parse all pages in db, re-calculate the title, and write it back to db.",
 			ShortUsage: "",
@@ -35,6 +43,29 @@ func init() {
 			Handler:    handleUrlInfoCommand,
 		},
 	}
+}
+
+func handleIndexCommand(args []string) {
+	if len(args) != 1 {
+		usage()
+		os.Exit(1)
+	}
+
+	indexDir := args[0]
+
+	var indexName string
+	_, filename := path.Split(indexDir)
+	if strings.HasSuffix(filename, ".idx") {
+		indexName = filename[:len(filename)-4]
+	} else {
+		indexName = filename
+	}
+
+	index, err := gsearch.NewIndex(indexDir, indexName)
+	utils.PanicOnErr(err)
+
+	err = gsearch.IndexDb(index)
+	utils.PanicOnErr(err)
 }
 
 func handleUrlInfoCommand(args []string) {
