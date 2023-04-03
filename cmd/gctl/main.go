@@ -38,10 +38,10 @@ func init() {
 			ShortUsage: "",
 			Handler:    handlePageRankCommand,
 		},
-		"update-titles": {
-			Info:       "Re-parse all pages in db, re-calculate the title, and write it back to db.",
+		"reparse": {
+			Info:       "Re-parse all pages in db, re-calculate columns we get from parsing, and write the results back to db.",
 			ShortUsage: "",
-			Handler:    handleUpdateTitlesCommand,
+			Handler:    handleReparseCommand,
 		},
 		"url": {
 			Info:       "Display information about the given url",
@@ -108,6 +108,7 @@ func handleUrlInfoCommand(args []string) {
 			fmt.Printf("  args: %s", info.ContentTypeArgs)
 		}
 		fmt.Print("\n")
+		fmt.Printf("lang: %s  kind:  %s\n", info.ContentLang, info.ContentKind)
 		fmt.Printf("content-length: %d  text-length: %d\n", len(info.Contents), len(info.ContentsText))
 	} else {
 		fmt.Println("No content.")
@@ -170,7 +171,7 @@ func handleUrlInfoCommand(args []string) {
 	}
 }
 
-func handleUpdateTitlesCommand(args []string) {
+func handleReparseCommand(args []string) {
 	// this sub-command re-parses all the contents in the database, checks if the
 	// title has changes, and if so, saves the new titles to the database again.
 	// This is useful, if our parsing algorithms change and we want to apply it
@@ -181,22 +182,41 @@ func handleUpdateTitlesCommand(args []string) {
 	defer db.Close()
 
 	rows, err := db.Query(`
-select c.id, content, title, content_type, u.url
+select c.id, content, title, content_type, lang, kind, u.url
 from contents c
 join urls u on u.content_id=c.id
 `)
 	utils.PanicOnErr(err)
 	defer rows.Close()
 
-	changes := map[int64]string{}
+	changedTitles := map[int64]string{}
+	changedKinds := map[int64]string{}
+	changedLangs := map[int64]string{}
 	i := 0
 	for rows.Next() {
 		var id int64
 		var blob []byte
 		var oldTitle string
+		var oldKind string
+		var oldLang string
+		var oldKindNull sql.NullString
+		var oldLangNull sql.NullString
 		var us string
 		var contentType string
-		rows.Scan(&id, &blob, &oldTitle, &contentType, &us)
+		err = rows.Scan(&id, &blob, &oldTitle, &contentType, &oldLangNull, &oldKindNull, &us)
+		utils.PanicOnErr(err)
+
+		if oldLangNull.Valid {
+			oldLang = oldLangNull.String
+		} else {
+			oldLang = ""
+		}
+
+		if oldKindNull.Valid {
+			oldKind = oldKindNull.String
+		} else {
+			oldKind = ""
+		}
 
 		u, _ := url.Parse(us)
 		rr, err := gparse.ParsePage(blob, u, contentType)
@@ -205,8 +225,18 @@ join urls u on u.content_id=c.id
 		}
 
 		if rr.Title != oldTitle {
-			fmt.Printf("'%s' => '%s'  %s  %d\n", oldTitle, rr.Title, u.String(), id)
-			changes[id] = rr.Title
+			fmt.Printf("Title change: '%s' => '%s'  url=%s  cid=%d\n", oldTitle, rr.Title, u.String(), id)
+			changedTitles[id] = rr.Title
+		}
+
+		if rr.Kind != oldKind {
+			fmt.Printf("Kind change: '%s' => '%s'  url=%s  cid=%d\n", oldKind, rr.Kind, u.String(), id)
+			changedKinds[id] = rr.Kind
+		}
+
+		if rr.Lang != oldLang {
+			fmt.Printf("Lang change: '%s' => '%s'  url=%s  cid=%d\n", oldLang, rr.Lang, u.String(), id)
+			changedLangs[id] = rr.Lang
 		}
 
 		i++
@@ -215,19 +245,58 @@ join urls u on u.content_id=c.id
 		}
 	}
 
-	fmt.Printf("---- applying %d changes ----\n", len(changes))
-	i = 0
-	for id, newTitle := range changes {
-		_, err := db.Exec(`update contents set title = $1 where id = $2`, newTitle, id)
-		utils.PanicOnErr(err)
-
-		i++
-		if i%100 == 0 {
-			fmt.Printf("Progress: %d/%d\n", i, len(changes))
-		}
+	fmt.Printf("---- applying %d changed titles ----\n", len(changedTitles))
+	ids := make([]int64, 0)
+	values := make([]string, 0)
+	for id, value := range changedTitles {
+		ids = append(ids, id)
+		values = append(values, value)
 	}
+	q := `
+update contents
+set title = x.title
+from
+    (select unnest($1::bigint[]) id, unnest($2::text[]) title) x
+where contents.id = x.id
+`
+	_, err = db.Exec(q, pq.Array(ids), pq.Array(values))
+	utils.PanicOnErr(err)
 
-	fmt.Printf("---- done: %d changes ----\n", len(changes))
+	fmt.Printf("---- applying %d changed kinds ----\n", len(changedKinds))
+	ids = make([]int64, 0)
+	values = make([]string, 0)
+	for id, value := range changedKinds {
+		ids = append(ids, id)
+		values = append(values, value)
+	}
+	q = `
+update contents
+set kind = x.kind
+from
+    (select unnest($1::bigint[]) id, unnest($2::text[]) kind) x
+where contents.id = x.id
+`
+	_, err = db.Exec(q, pq.Array(ids), pq.Array(values))
+	utils.PanicOnErr(err)
+
+	fmt.Printf("---- applying %d changed langs ----\n", len(changedLangs))
+	ids = make([]int64, 0)
+	values = make([]string, 0)
+	for id, value := range changedLangs {
+		ids = append(ids, id)
+		values = append(values, value)
+	}
+	q = `
+update contents
+set lang = x.lang
+from
+    (select unnest($1::bigint[]) id, unnest($2::text[]) lang) x
+where contents.id = x.id
+`
+	_, err = db.Exec(q, pq.Array(ids), pq.Array(values))
+	utils.PanicOnErr(err)
+
+	fmt.Printf("Done.")
 }
 
 func usage() {

@@ -19,6 +19,8 @@ type UrlInfo struct {
 	ContentsText      string
 	ContentType       string
 	ContentTypeArgs   string
+	ContentLang       string
+	ContentKind       string
 	InternalLinks     []gparse.Link
 	ExternalLinks     []gparse.Link
 	InternalBacklinks []gparse.Link
@@ -40,7 +42,7 @@ func QueryUrl(urlStr string, substr bool) (info UrlInfo, err error) {
 	}
 
 	q := `
-select u.url, u.id, u.rank, h.rank, c.id, c.title, c.content_type, c.content_type_args, length(c.content), length(c.content_text)
+select u.url, u.id, u.rank, h.rank, c.id, c.title, c.content_type, c.content_type_args, c.content, c.content_text, c.lang, c.kind
 from urls u
 join hosts h on h.hostname = u.hostname
 join contents c on u.content_id = c.id
@@ -49,6 +51,8 @@ where ` + whereClause
 	row := db.QueryRow(q, urlStr)
 
 	var cid sql.NullInt64
+	var lang sql.NullString
+	var kind sql.NullString
 	err = row.Scan(
 		&info.Url,
 		&info.UrlId,
@@ -59,7 +63,9 @@ where ` + whereClause
 		&info.ContentType,
 		&info.ContentTypeArgs,
 		&info.Contents,
-		&info.ContentsText)
+		&info.ContentsText,
+		&lang,
+		&kind)
 	if err != nil {
 		return
 	}
@@ -69,6 +75,9 @@ where ` + whereClause
 	} else {
 		info.ContentId = -1
 	}
+
+	info.ContentLang = lang.String
+	info.ContentKind = kind.String
 
 	u, err := url.Parse(info.Url)
 	if err != nil {
