@@ -13,6 +13,7 @@ import (
 	"github.com/elektito/gcrawler/pkg/db"
 	"github.com/elektito/gcrawler/pkg/gparse"
 	"github.com/elektito/gcrawler/pkg/gsearch"
+	"github.com/elektito/gcrawler/pkg/pagerank"
 	"github.com/elektito/gcrawler/pkg/utils"
 	_ "github.com/lib/pq"
 )
@@ -31,6 +32,11 @@ func init() {
 			Info:       "Index the contents of the database",
 			ShortUsage: "<index-dir>",
 			Handler:    handleIndexCommand,
+		},
+		"pagerank": {
+			Info:       "Update pageranks in the database.",
+			ShortUsage: "",
+			Handler:    handlePageRankCommand,
 		},
 		"update-titles": {
 			Info:       "Re-parse all pages in db, re-calculate the title, and write it back to db.",
@@ -66,6 +72,10 @@ func handleIndexCommand(args []string) {
 
 	err = gsearch.IndexDb(index)
 	utils.PanicOnErr(err)
+}
+
+func handlePageRankCommand(args []string) {
+	pagerank.PerformPageRankOnDb()
 }
 
 func handleUrlInfoCommand(args []string) {
