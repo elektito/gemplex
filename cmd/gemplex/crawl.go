@@ -10,24 +10,18 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"net/http"
-	_ "net/http/pprof"
 	"net/url"
 	"os"
-	"os/signal"
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
+	"sync"
 	"time"
 
 	"github.com/a-h/gemini"
 	"github.com/elektito/gcrawler/pkg/config"
 	"github.com/elektito/gcrawler/pkg/gparse"
-	_ "github.com/elektito/gcrawler/pkg/mgmt"
-	"github.com/elektito/gcrawler/pkg/pagerank"
 	"github.com/elektito/gcrawler/pkg/utils"
-	_ "github.com/lib/pq"
 )
 
 const (
@@ -66,8 +60,8 @@ func readGemini(ctx context.Context, client *gemini.Client, u *url.URL, visitorI
 redirect:
 	resp, certs, auth, ok, err := client.RequestURL(ctx, u)
 	if err != nil {
-		fmt.Printf(
-			"[%s] Request error: ok=%t auth=%t certs=%d err=%s\n",
+		log.Printf(
+			"[crawl][%s] Request error: ok=%t auth=%t certs=%d err=%s\n",
 			visitorId, ok, auth, len(certs), err)
 		return
 	}
@@ -80,7 +74,7 @@ redirect:
 	}
 
 	if len(certs) == 0 {
-		err = fmt.Errorf("No TLS certificates received.")
+		err = fmt.Errorf("[crawl] No TLS certificates received.")
 		return
 	}
 
@@ -89,8 +83,8 @@ redirect:
 
 	resp, certs, auth, ok, err = client.RequestURL(ctx, u)
 	if err != nil {
-		fmt.Printf(
-			"[%s] Request error: ok=%t auth=%t certs=%d err=%s\n",
+		log.Printf(
+			"[crawl][%s] Request error: ok=%t auth=%t certs=%d err=%s\n",
 			visitorId, ok, auth, len(certs), err)
 		return
 	}
@@ -129,8 +123,8 @@ redirect:
 				err = fmt.Errorf("Too many redirects")
 				return
 			}
-			fmt.Printf(
-				"[%s] Redirecting to: %s (from %s)\n",
+			log.Printf(
+				"[crawl][%s] Redirecting to: %s (from %s)\n",
 				visitorId, target.String(), u.String())
 			u = target
 			goto redirect
@@ -148,12 +142,12 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 	client := gemini.NewClient()
 
 	for urlStr := range urls {
-		fmt.Printf("[%s] Processing: %s\n", visitorId, urlStr)
+		log.Printf("[crawl][%s] Processing: %s\n", visitorId, urlStr)
 		u, _ := url.Parse(urlStr)
 
 		body, code, meta, err := readGemini(ctx, client, u, visitorId)
 		if err != nil {
-			fmt.Println("Error: url=", urlStr, " ", err)
+			log.Printf("[crawl][%s] Error: %s url=%s\n", visitorId, err, urlStr)
 			results <- VisitResult{
 				url:        urlStr,
 				error:      err,
@@ -166,7 +160,7 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 			contentType := meta
 			page, err := gparse.ParsePage(body, u, contentType)
 			if err != nil {
-				fmt.Printf("Error parsing page: %s\n", err)
+				log.Printf("[crawl][%s]Error parsing page: %s\n", visitorId, err)
 				results <- VisitResult{
 					url:         urlStr,
 					statusCode:  code,
@@ -195,7 +189,7 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 		time.Sleep(1 * time.Second)
 	}
 
-	fmt.Printf("[%s] Exited visitor.\n", visitorId)
+	log.Printf("[crawl][%s] Exited.\n", visitorId)
 }
 
 func parseContentType(ct string) (contentType string, args string) {
@@ -245,7 +239,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 		contentHash, r.contents, r.page.Text, r.page.Lang, kind, ct, ctArgs, r.page.Title, r.visitTime,
 	).Scan(&contentId)
 	if err != nil {
-		fmt.Println("Database error when inserting contents for url:", r.url)
+		log.Println("[crawl] Database error when inserting contents for url:", r.url)
 		panic(err)
 	}
 
@@ -262,18 +256,18 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 		contentId, r.statusCode, revisitTimeIncrementNoChange, maxRevisitTime, revisitTimeAfterChange, r.url,
 	).Scan(&urlId)
 	if err == sql.ErrNoRows {
-		fmt.Printf("WARNING: URL not in the database, even though it should be; this is a bug! (%s)\n", r.url)
+		log.Printf("[crawl] WARNING: URL not in the database, even though it should be; this is a bug! (%s)\n", r.url)
 		return
 	}
 	if err != nil {
-		fmt.Println("Database error when updating url info:", r.url)
+		log.Println("[crawl] Database error when updating url info:", r.url)
 		panic(err)
 	}
 
 	// remove all existing links for this url
 	_, err = db.Exec(`delete from links where src_url_id = $1`, urlId)
 	if err != nil {
-		fmt.Println("Database error when deleting existing links for url:", r.url)
+		log.Println("[crawl] Database error when deleting existing links for url:", r.url)
 		panic(err)
 	}
 
@@ -290,7 +284,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 			link.Url, u.Hostname(),
 		).Scan(&destUrlId)
 		if err != nil {
-			fmt.Println("DB error inserting link url:", link.Url)
+			log.Println("[crawl] DB error inserting link url:", link.Url)
 		}
 		utils.PanicOnErr(err)
 
@@ -359,7 +353,7 @@ loop:
 	}
 
 	done <- true
-	fmt.Println("Exited flusher.")
+	log.Println("[crawl][flusher] Exited.")
 }
 
 func hashString(input string) uint64 {
@@ -447,12 +441,12 @@ loop:
 			if !ok {
 				ips, err := net.LookupIP(host)
 				if err != nil {
-					fmt.Printf("Error resolving host %s: %s\n", host, err)
+					log.Printf("[crawl][coord] Error resolving host %s: %s\n", host, err)
 					host2ip[host] = ""
 					continue
 				}
 				if len(ips) == 0 {
-					fmt.Printf("Error resolving host %s: empty response\n", host)
+					log.Printf("[crawl][coord] Error resolving host %s: empty response\n", host)
 					host2ip[host] = ""
 					continue
 				}
@@ -475,11 +469,11 @@ loop:
 		}
 	}
 
-	fmt.Println("Exited coordinator")
+	log.Println("[crawl][coord] Exited.")
 	done <- true
 }
 
-func getDueUrls(c chan<- string) {
+func getDueUrls(c chan<- string, done chan bool) {
 	db, err := sql.Open("postgres", config.GetDbConnStr())
 	utils.PanicOnErr(err)
 	defer db.Close()
@@ -492,10 +486,17 @@ func getDueUrls(c chan<- string) {
 	)
 	utils.PanicOnErr(err)
 	defer rows.Close()
+
+loop:
 	for rows.Next() {
 		var url string
 		rows.Scan(&url)
-		c <- url
+
+		select {
+		case c <- url:
+		case <-done:
+			break loop
+		}
 	}
 	close(c)
 }
@@ -523,7 +524,7 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (pref
 		return
 	}
 
-	fmt.Println("Found robots.txt for:", u.String())
+	log.Println("[crawl] Found robots.txt for:", u.String())
 
 	text := string(body)
 	lines := strings.Split(text, "\n")
@@ -601,10 +602,11 @@ func seeder(output chan<- string, done chan bool) {
 		return
 	}
 
+	getDueDone := make(chan bool)
 loop:
 	for {
 		c := make(chan string)
-		go getDueUrls(c)
+		go getDueUrls(c, getDueDone)
 		for urlString := range c {
 			urlParsed, err := url.Parse(urlString)
 			if err != nil {
@@ -620,11 +622,12 @@ loop:
 				if _, ok := err.(*RecentRobotsError); ok {
 					// don't report these so logs aren't spammed
 				} else {
-					fmt.Printf("Cannot read robots.txt for url %s: %s\n", urlString, err)
+					log.Printf("[crawl][seeder] Cannot read robots.txt for url %s: %s\n", urlString, err)
 				}
 				continue
 			}
 			if isBanned(urlParsed, robotsPrefixes) {
+				// TODO somehow mark it as banned in db?
 				continue
 			}
 
@@ -644,8 +647,9 @@ loop:
 		}
 	}
 
+	getDueDone <- true
 	done <- true
-	fmt.Println("Exited seeder.")
+	log.Println("[crawl][seeder] Exited.")
 }
 
 func cleaner(done chan bool) {
@@ -664,7 +668,7 @@ where not exists (
 		affected, err := result.RowsAffected()
 		utils.PanicOnErr(err)
 		if affected > 0 {
-			fmt.Printf("Removed %d dangling objects from contents table.\n", affected)
+			log.Printf("[crawl][cleaner] Removed %d dangling objects from contents table.\n", affected)
 		}
 
 		select {
@@ -675,23 +679,7 @@ where not exists (
 	}
 
 	done <- true
-	fmt.Println("Exited cleaner.")
-}
-
-func periodicPageRank(done chan bool) {
-loop:
-	for {
-		pagerank.PerformPageRankOnDb()
-
-		select {
-		case <-time.After(60 * time.Minute):
-		case <-done:
-			break loop
-		}
-	}
-
-	done <- true
-	fmt.Println("Exited pagerank.")
+	log.Println("[crawl][cleaner] Exited.")
 }
 
 func logSizeGroups(sizeGroups map[int]int) {
@@ -706,14 +694,11 @@ func logSizeGroups(sizeGroups map[int]int) {
 		count := sizeGroups[size]
 		msg += fmt.Sprintf(" %d:%d", size, count)
 	}
-	fmt.Println(msg)
+	log.Println(msg)
 }
 
-func main() {
-	// Setup an http server for pprof and management ui
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
+func crawl(done chan bool, wg *sync.WaitGroup) {
+	defer wg.Done()
 
 	nprocs := 500
 
@@ -735,16 +720,10 @@ func main() {
 	seedDone := make(chan bool)
 	flushDone := make(chan bool)
 	cleanDone := make(chan bool)
-	pagerankDone := make(chan bool)
 	go coordinator(nprocs, inputUrls, urlChan, coordDone)
 	go seeder(urlChan, seedDone)
 	go flusher(visitResults, flushDone)
 	go cleaner(cleanDone)
-	go periodicPageRank(pagerankDone)
-
-	// setup signal handling
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 loop:
 	for {
@@ -760,19 +739,17 @@ loop:
 				sizeGroups[size] = 1
 			}
 		}
-		fmt.Println("Links in queue: ", nLinks, " outputQueue: ", len(visitResults))
+		log.Println("[crawl] Links in queue: ", nLinks, " outputQueue: ", len(visitResults))
 		logSizeGroups(sizeGroups)
 
 		select {
-		case <-sigs:
-			fmt.Println("Received signal.")
-			signal.Stop(sigs)
+		case <-done:
 			break loop
 		case <-time.After(1 * time.Second):
 		}
 	}
 
-	fmt.Println("Shutting down workers...")
+	log.Println("[crawl] Shutting down workers...")
 	seedDone <- true
 	<-seedDone
 	coordDone <- true
@@ -781,15 +758,13 @@ loop:
 	<-flushDone
 	cleanDone <- true
 	<-cleanDone
-	pagerankDone <- true
-	<-pagerankDone
 
-	fmt.Println("Closing channels...")
+	log.Println("[crawl] Closing channels...")
 	for _, c := range inputUrls {
 		close(c)
 	}
 
-	fmt.Println("Draining channels...")
+	log.Println("[crawl] Draining channels...")
 	urls := make([][]string, nprocs)
 	for i := 0; i < nprocs; i++ {
 		urls[i] = make([]string, 0)
@@ -815,6 +790,7 @@ loop:
 		}
 	}
 
-	fmt.Println("Wrote channel contents to state.gc")
-	fmt.Println("Done.")
+	log.Println("[crawl] Wrote channel contents to state.gc")
+
+	log.Println("[crawl] Done.")
 }

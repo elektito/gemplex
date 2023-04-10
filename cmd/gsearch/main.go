@@ -137,7 +137,7 @@ func loadInitialIndex() (chosenIdx bleve.Index, err error) {
 			return
 		}
 
-		err = gsearch.IndexDb(chosenIdx)
+		err = gsearch.IndexDb(chosenIdx, nil)
 	}
 
 	return
@@ -173,7 +173,7 @@ func periodicIndex() {
 		newIdx, err := gsearch.NewIndex(newIdxFile, newIdxName)
 		utils.PanicOnErr(err)
 
-		err = gsearch.IndexDb(newIdx)
+		err = gsearch.IndexDb(newIdx, nil)
 		utils.PanicOnErr(err)
 
 		idx.Swap([]bleve.Index{newIdx}, []bleve.Index{curIdx})

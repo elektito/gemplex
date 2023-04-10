@@ -1,2 +1,2 @@
-NAME = gcrawler
+NAME = gemplex
 include ../cmd.mk

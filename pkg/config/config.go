@@ -33,6 +33,10 @@ type ConfigType struct {
 		Port    int
 		Address string
 	}
+
+	Search struct {
+		UnixSocketPath string
+	}
 }
 
 const ConfigFilename = "gcrawler.toml"
@@ -51,6 +55,8 @@ func init() {
 	Config.Capsule.KeyFile = "key.pem"
 	Config.Capsule.Port = 1965
 	Config.Capsule.Address = "127.0.0.1"
+
+	Config.Search.UnixSocketPath = "/tmp/gsearch.sock"
 
 	f, err := os.Open(ConfigFilename)
 	if err != nil {

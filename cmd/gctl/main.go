@@ -70,7 +70,7 @@ func handleIndexCommand(args []string) {
 	index, err := gsearch.NewIndex(indexDir, indexName)
 	utils.PanicOnErr(err)
 
-	err = gsearch.IndexDb(index)
+	err = gsearch.IndexDb(index, nil)
 	utils.PanicOnErr(err)
 }
 

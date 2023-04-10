@@ -146,7 +146,7 @@ func OpenIndex(path string, name string) (idx bleve.Index, err error) {
 	return
 }
 
-func IndexDb(index bleve.Index) (err error) {
+func IndexDb(index bleve.Index, done chan bool) (err error) {
 	dbConnStr := config.GetDbConnStr()
 	db, err := sql.Open("postgres", dbConnStr)
 	if err != nil {
@@ -175,6 +175,7 @@ where u.rank is not null and h.rank is not null
 
 	n := 1
 	batch := index.NewBatch()
+loop:
 	for rows.Next() {
 		var doc Doc
 		var links pq.StringArray
@@ -200,6 +201,12 @@ where u.rank is not null and h.rank is not null
 			}
 			batch.Reset()
 			log.Printf("Indexing progress: %d pages indexed so far.\n", n)
+		}
+
+		select {
+		case <-done:
+			break loop
+		default:
 		}
 
 		n++
