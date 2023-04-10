@@ -142,6 +142,10 @@ func NewIndex(path string, name string) (idx bleve.Index, err error) {
 
 func OpenIndex(path string, name string) (idx bleve.Index, err error) {
 	idx, err = bleve.Open(path)
+	if err != nil {
+		return
+	}
+
 	idx.SetName(name)
 	return
 }
