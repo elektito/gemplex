@@ -48,21 +48,26 @@ func cgi(r io.Reader, w io.Writer, params Params) {
 	urlStr := scanner.Text()
 	u, err := url.Parse(urlStr)
 	if err != nil {
-		geminiErr(w, 59, "Bad URL")
+		geminiHeader(w, 59, "Bad URL")
 		return
 	}
 
 	if u.Hostname() != params.ServerName {
-		geminiErr(w, 53, "Unknown hostname in URL")
+		geminiHeader(w, 53, "Unknown hostname in URL")
+		return
+	}
+
+	if u.RawQuery == "" {
+		geminiHeader(w, 10, "Search query")
 		return
 	}
 
 	req, err := parseSearchRequest(u)
 	if err == ErrPageNotFound {
-		geminiErr(w, 51, "Not Found")
+		geminiHeader(w, 51, "Not Found")
 		return
 	} else if err == ErrBadUrl {
-		geminiErr(w, 59, "Bad URL")
+		geminiHeader(w, 59, "Bad URL")
 		return
 	} else if err != nil {
 		cgiErr(w, "Internal error")
@@ -95,6 +100,7 @@ func cgi(r io.Reader, w io.Writer, params Params) {
 		return
 	}
 
+	geminiHeader(w, 20, "text/gemini")
 	w.Write(renderResults(resp, req))
 }
 
@@ -181,7 +187,7 @@ Found {{ .TotalResults }} result(s) in {{ .Duration }}.
 		Query:        req.Query,
 		QueryEscaped: url.QueryEscape(req.Query),
 		Duration:     resp.Duration,
-		Title:        "Elektito's Gem-Search",
+		Title:        "Gemplex Gemini Search",
 		Results:      resp.Results,
 		TotalResults: resp.TotalResults,
 		Page:         req.Page,
@@ -196,14 +202,14 @@ Found {{ .TotalResults }} result(s) in {{ .Duration }}.
 	return w.Bytes()
 }
 
-func geminiErr(w io.Writer, statusCode int, meta string) {
+func geminiHeader(w io.Writer, statusCode int, meta string) {
 	msg := fmt.Sprintf("%d %s\r\n", statusCode, meta)
 	w.Write([]byte(msg))
 }
 
 func cgiErr(w io.Writer, msg string) {
 	msg = fmt.Sprintf("CGI Error: %s", msg)
-	geminiErr(w, 42, msg)
+	geminiHeader(w, 42, msg)
 }
 
 func parseSearchRequest(u *url.URL) (req gsearch.SearchRequest, err error) {
@@ -214,6 +220,9 @@ func parseSearchRequest(u *url.URL) (req gsearch.SearchRequest, err error) {
 		err = ErrPageNotFound
 		return
 	}
+
+	// default value
+	req.Page = 1
 
 	for i, name := range re.SubexpNames() {
 		switch name {
