@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"strconv"
-	"strings"
 	"text/template"
 	"time"
 
@@ -186,36 +185,36 @@ func periodicIndex() {
 func search(q string, highlightStyle string, page int) (results []SearchResult, dur time.Duration, nresults uint64) {
 	start := time.Now()
 
-	rr, err := gsearch.Search(q, idx, highlightStyle, page)
+	req := gsearch.SearchRequest{
+		Query:          q,
+		Page:           page,
+		HighlightStyle: "gem",
+	}
+	resp, err := gsearch.Search(req, idx)
 	utils.PanicOnErr(err)
-	for _, r := range rr.Hits {
-		snippet := strings.Join(r.Fragments["Content"], "")
 
-		// this make sure snippets don't expand on many lines, and also
-		// cruicially, formatted lines are not rendered in clients that do that.
-		snippet = " " + strings.Replace(snippet, "\n", "…", -1)
-
+	for _, r := range resp.Results {
 		var hostname string
-		u, err := url.Parse(r.ID)
+		u, err := url.Parse(r.Url)
 		if err == nil {
 			hostname = u.Hostname()
 		}
 
 		result := SearchResult{
-			Url:       r.ID,
+			Url:       r.Url,
 			Hostname:  hostname,
-			Title:     r.Fields["Title"].(string),
-			Snippet:   snippet,
-			UrlRank:   r.Fields["PageRank"].(float64),
-			HostRank:  r.Fields["HostRank"].(float64),
-			Relevance: r.Score,
+			Title:     r.Title,
+			Snippet:   r.Snippet,
+			UrlRank:   r.UrlRank,
+			HostRank:  r.HostRank,
+			Relevance: r.Relevance,
 		}
 		results = append(results, result)
 	}
 
 	end := time.Now()
 	dur = end.Sub(start)
-	nresults = rr.Total
+	nresults = resp.TotalResults
 
 	return
 }

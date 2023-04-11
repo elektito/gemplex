@@ -7,34 +7,12 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/elektito/gcrawler/pkg/config"
 	"github.com/elektito/gcrawler/pkg/gsearch"
 	"github.com/elektito/gcrawler/pkg/utils"
 )
-
-type Request struct {
-	Query string `json:"q"`
-	Page  int    `json:"p"`
-}
-
-type SearchResult struct {
-	Url       string
-	Title     string
-	Snippet   string
-	UrlRank   float64
-	HostRank  float64
-	Relevance float64
-}
-
-type Response struct {
-	TotalResults uint64         `json:"n"`
-	Results      []SearchResult `json:"r"`
-	Duration     time.Duration  `json:"d"`
-}
 
 func search(done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -82,7 +60,10 @@ func handleConn(conn net.Conn) {
 		return
 	}
 
-	var req Request
+	log.Println("Request:", scanner.Text())
+
+	var req gsearch.SearchRequest
+	req.Page = 1
 	err := json.Unmarshal(scanner.Bytes(), &req)
 	if err != nil {
 		conn.Write(errorResponse("bad request"))
@@ -94,35 +75,12 @@ func handleConn(conn net.Conn) {
 		return
 	}
 
-	rr, err := gsearch.Search(req.Query, idx, "gem", req.Page)
+	resp, err := gsearch.Search(req, idx)
 	if err != nil {
 		conn.Write(errorResponse(err.Error()))
 		return
 	}
 
-	results := make([]SearchResult, 0)
-	for _, r := range rr.Hits {
-		snippet := strings.Join(r.Fragments["Content"], "")
-
-		// this make sure snippets don't expand on many lines, and also
-		// cruicially, formatted lines are not rendered in clients that do that.
-		snippet = " " + strings.Replace(snippet, "\n", "…", -1)
-
-		result := SearchResult{
-			Url:       r.ID,
-			Title:     r.Fields["Title"].(string),
-			Snippet:   snippet,
-			UrlRank:   r.Fields["PageRank"].(float64),
-			HostRank:  r.Fields["HostRank"].(float64),
-			Relevance: r.Score,
-		}
-		results = append(results, result)
-	}
-
-	resp := Response{
-		TotalResults: rr.Total,
-		Results:      results,
-	}
 	err = json.NewEncoder(conn).Encode(resp)
 	if err != nil {
 		conn.Write(errorResponse(fmt.Sprintf("Error marshalling results: %s", err)))
