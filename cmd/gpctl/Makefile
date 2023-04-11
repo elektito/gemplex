@@ -1,2 +1,2 @@
-NAME = gctl
+NAME = gpctl
 include ../cmd.mk
