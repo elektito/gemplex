@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 
@@ -60,7 +61,7 @@ func init() {
 
 	f, err := os.Open(ConfigFilename)
 	if err != nil {
-		fmt.Printf("Cannot open config file %s; Proceeding with defaults.\n", ConfigFilename)
+		log.Printf("Cannot open config file %s; Proceeding with defaults.\n", ConfigFilename)
 		return
 	}
 
