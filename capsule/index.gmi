@@ -1,0 +1,16 @@
+# Gemplex Gemini Search Engine
+
+=> /search Search Geminispace
+
+════════════════════════════════════════════════════════════════
+
+Gemplex is an experimental (like all things Gemini) Search Engine for Gemini written in Go. You can find the source code here:
+
+=> https://github.com/elektito/gemplex Source on Github
+
+More info:
+=> /crawler 🕷️ Crawler Notes
+=> gemini://elektito.com/ ✍️ Author Capsule
+
+════════════════════════════════════════════════════════════════
+=> gemini://elektito.com/hodhod 🐦 Served by Hodhod

@@ -1,0 +1,11 @@
+# Gemplex Crawler
+
+Gemplex tries to be slow and careful when crawling the Geminispace. robots.txt limitations are honored, and queries are timed so that a single host is not hit more than once a second.
+
+The crawler's user-agent string is "elektito/gemplex". You can use this user-agent to set limitations specific to the Gemplex crawler. Any limitations set for "crawler", "indexer", and "researcher" crawlers are always taken into account, as described in the spec:
+
+=> gemini://gemini.circumlunar.space/docs/companion/robots.gmi robots.txt Specification for Gemini
+
+If there are any issues, you are welcome to contact the author at:
+
+=> mailto:mostafa@sepent.com mostafa@sepent.com
