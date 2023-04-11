@@ -5,8 +5,8 @@ import (
 	"log"
 	"math"
 
-	"github.com/elektito/gcrawler/pkg/config"
-	"github.com/elektito/gcrawler/pkg/utils"
+	"github.com/elektito/gemplex/pkg/config"
+	"github.com/elektito/gemplex/pkg/utils"
 	"github.com/lib/pq"
 )
 

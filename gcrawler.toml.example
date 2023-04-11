@@ -1,8 +1,6 @@
 [db]
-# this section is used by both gcrawler and gsearch.
-#
 # the name of the database to use:
-# name = "gcrawler"
+# name = "gemplex"
 #
 # the hostname, or socket name to connect to:
 # host = "/var/run/postgresql"
@@ -20,13 +18,9 @@
 # sslmode = false
 
 [index]
-# this section is only used by gsearch.
-#
 # path = "."
 
 [capsule]
-# this section is only used by gsearch.
-#
 # certFile = "cert.pem"
 # keyFile = "key.pem"
 #

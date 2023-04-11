@@ -16,9 +16,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/elektito/gcrawler/pkg/config"
-	"github.com/elektito/gcrawler/pkg/gsearch"
-	"github.com/elektito/gcrawler/pkg/utils"
+	"github.com/elektito/gemplex/pkg/config"
+	"github.com/elektito/gemplex/pkg/gsearch"
+	"github.com/elektito/gemplex/pkg/utils"
 )
 
 type Params struct {

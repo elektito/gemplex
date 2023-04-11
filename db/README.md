@@ -31,20 +31,20 @@ their names.
 The script uses the following environment variables (if present):
 
  - `DB_NAME`: The name of the postgresql database to backup. Defaults to
-   `gcrawler`.
+   `gemplex`.
  - `MAX_BACKUPS`: The maximum number of backups to keep. Defaults to 7. Oldest
    backups are deleted if we reach this number.
- - `BACKUP_PREFIX`: The prefix for backup file names. Defaults to `gcrawler-`.
+ - `BACKUP_PREFIX`: The prefix for backup file names. Defaults to `gemplex-`.
  - `BACKUP_SUFFIX`: The suffix for backup file names. Defaults to `.dump`.
  - `DEST_DIR`: The directory to store backups in. Defaults to
-   `/var/lib/gcrawler/backups`.
+   `/var/lib/gemplex/backups`.
 
 In order to restore from a backup file, you can use the `pg_restore` command.
 For example:
 
 ``` sh
 $ createdb newdb
-$ pg_restore -d newdb /var/lib/backups/gcrawler-2023-01-02.dump
+$ pg_restore -d newdb /var/lib/backups/gemplex-2023-01-02.dump
 ```
 
 This example, restores the backup to a newly created database named `newdb`.

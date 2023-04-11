@@ -1,4 +1,4 @@
-module github.com/elektito/gcrawler
+module github.com/elektito/gemplex
 
 go 1.20
 

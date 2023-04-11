@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"net/url"
 
-	"github.com/elektito/gcrawler/pkg/config"
-	"github.com/elektito/gcrawler/pkg/gparse"
+	"github.com/elektito/gemplex/pkg/config"
+	"github.com/elektito/gemplex/pkg/gparse"
 )
 
 type UrlInfo struct {

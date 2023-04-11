@@ -19,9 +19,9 @@ import (
 	"time"
 
 	"github.com/a-h/gemini"
-	"github.com/elektito/gcrawler/pkg/config"
-	"github.com/elektito/gcrawler/pkg/gparse"
-	"github.com/elektito/gcrawler/pkg/utils"
+	"github.com/elektito/gemplex/pkg/config"
+	"github.com/elektito/gemplex/pkg/gparse"
+	"github.com/elektito/gemplex/pkg/utils"
 )
 
 const (
@@ -32,7 +32,7 @@ const (
 	maxRevisitTime               = "1 month"
 	minRedirectRetryAfterChange  = "1 week"
 	maxRedirects                 = 5
-	crawlerUserAgent             = "elektito/gcrawler"
+	crawlerUserAgent             = "elektito/gemplex"
 	robotsErrorWaitTime          = 1 * time.Hour
 )
 

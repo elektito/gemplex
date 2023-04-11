@@ -14,8 +14,8 @@ import (
 	_ "github.com/blevesearch/bleve/v2/search/highlight/highlighter/ansi"
 	"github.com/lib/pq"
 
-	"github.com/elektito/gcrawler/pkg/config"
-	"github.com/elektito/gcrawler/pkg/utils"
+	"github.com/elektito/gemplex/pkg/config"
+	"github.com/elektito/gemplex/pkg/utils"
 )
 
 const PageSize = 15

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elektito/gcrawler/pkg/pagerank"
+	"github.com/elektito/gemplex/pkg/pagerank"
 )
 
 func rank(done chan bool, wg *sync.WaitGroup) {

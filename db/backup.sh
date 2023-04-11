@@ -2,11 +2,11 @@
 
 set -e
 
-DB_NAME=${DB_NAME:-gcrawler}
+DB_NAME=${DB_NAME:-gemplex}
 MAX_BACKUPS=${MAX_BACKUPS:-7}
-BACKUP_PREFIX=${BACKUP_PREFIX:-gcrawler-}
+BACKUP_PREFIX=${BACKUP_PREFIX:-gemplex-}
 BACKUP_SUFFIX=${BACKUP_SUFFIX:-.dump}
-DEST_DIR=${DEST_DIR:-/var/lib/gcrawler/backups}
+DEST_DIR=${DEST_DIR:-/var/lib/gemplex/backups}
 
 mkdir -p "${DEST_DIR}"
 

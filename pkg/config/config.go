@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/BurntSushi/toml"
-	"github.com/elektito/gcrawler/pkg/utils"
+	"github.com/elektito/gemplex/pkg/utils"
 )
 
 type ConfigType struct {
@@ -40,13 +40,13 @@ type ConfigType struct {
 	}
 }
 
-const ConfigFilename = "gcrawler.toml"
+const ConfigFilename = "gemplex.toml"
 
 var Config ConfigType
 
 func init() {
 	// set default values
-	Config.Db.Name = "gcrawler"
+	Config.Db.Name = "gemplex"
 	Config.Db.Port = -1
 	Config.Db.Host = "/var/run/postgresql"
 
