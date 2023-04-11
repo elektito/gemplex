@@ -31,6 +31,12 @@ var (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--serve" {
+		// run as a gemini server. useful for debugging and testing.
+		testServe()
+		return
+	}
+
 	params := Params{
 		ServerName: os.Getenv("SERVER_NAME"),
 	}
