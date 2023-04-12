@@ -10,4 +10,11 @@ all: $(NAME)
 clean:
 	rm -f $(BINDIR)/$(NAME)
 
+release: $(BINDIR)/$(NAME)
+	strip $(BINDIR)/$(NAME)
+
+install:
+	mkdir -p /opt/gemplex/
+	install $(BINDIR)/$(NAME) /opt/gemplex/
+
 .PHONY: all clean

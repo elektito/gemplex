@@ -1,4 +1,4 @@
-TOPTARGETS := all clean
+TOPTARGETS := all clean install release
 
 BINDIR  != pwd
 SUBDIRS != find cmd -mindepth 1 -maxdepth 1 -type d
