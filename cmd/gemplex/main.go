@@ -9,48 +9,25 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/elektito/gemplex/pkg/config"
 )
 
-func usage() {
-	fmt.Printf(`Gemplex Search Engine
-
-usage: %s all | <commands>
-
-<commands> can be one or more of these commands, separated by spaces. If "all"
-is used, all daemons are launched.
-
- - crawl: Start the crawler daemon. The crawler routinely crawls the geminispace
-   and stores the results in the database.
-
- - rank: Start the periodic pagerank calculator damon.
-
- - index: Start the periodic ping-pong indexer daemon. It builds, alternatingly,
-   an index named "ping" or "pong".
-
- - search: Start the search daemon, which opens the latest index (either ping or
-   pong), and listens for search requests over a unix domain socket.
-
-`, os.Args[0])
-}
-
 func main() {
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-
 	var cmds []string
 	allCmds := []string{"crawl", "rank", "index", "search"}
 
-	if len(os.Args) == 1 {
+	if len(config.Config.Args) == 0 {
 		cmds = allCmds
-	} else if os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "-?" {
-		usage()
-		os.Exit(0)
-	} else if os.Args[1] == "all" {
+	} else if config.Config.Args[0] == "all" {
 		cmds = allCmds
 	} else {
-		cmds = os.Args[1:]
+		cmds = config.Config.Args
 	}
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	seen := map[string]bool{}
 	funcs := []func(chan bool, *sync.WaitGroup){}
