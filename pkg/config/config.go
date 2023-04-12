@@ -25,16 +25,6 @@ type ConfigType struct {
 		Path string
 	}
 
-	Capsule struct {
-		// tls certificate and key files
-		CertFile string
-		KeyFile  string
-
-		// bind port and bind ip address
-		Port    int
-		Address string
-	}
-
 	Search struct {
 		UnixSocketPath string
 	}
@@ -86,8 +76,4 @@ func GetDbConnStr() string {
 	}
 
 	return s
-}
-
-func GetBindAddrAndPort() string {
-	return Config.Capsule.Address + ":" + strconv.Itoa(Config.Capsule.Port)
 }
