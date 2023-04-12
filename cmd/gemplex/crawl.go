@@ -408,6 +408,9 @@ func isBlacklisted(link string, parsedLink *url.URL) bool {
 		"gemini://geminispace.info/v/",
 		"gemini://gemini.bunburya.eu/remini/",
 		"gemini://gmi.skyjake.fi/fonts/",
+		"gemini://gmi.skyjake.fi/gemlog/fonts/gemlog/~Cosmos/",
+		"gemini://gmi.skyjake.fi/~Cosmos/",
+		"gemini://gmi.skyjake.fi/lagrange/gemlog/~Cosmos/",
 	}
 
 	for _, prefix := range blacklistedPrefixes {
