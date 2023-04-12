@@ -23,6 +23,10 @@ type ConfigType struct {
 	Index struct {
 		// the path in which we look for the index directories
 		Path string
+
+		// batch size used when indexing; higher values increase indexing
+		// performance, but also increase memory consumption.
+		BatchSize int
 	}
 
 	Search struct {
@@ -55,6 +59,7 @@ func init() {
 	Config.Db.Host = "/var/run/postgresql"
 
 	Config.Index.Path = "."
+	Config.Index.BatchSize = 200
 
 	Config.Search.UnixSocketPath = "/tmp/gsearch.sock"
 

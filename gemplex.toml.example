@@ -19,3 +19,8 @@
 
 [index]
 # path = "."
+#
+# the number of documents batched together in each step
+# when indexing; higher values make indexing faster, but
+# also increase memory consumption.
+# batchSize = 200

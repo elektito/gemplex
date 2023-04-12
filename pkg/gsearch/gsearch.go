@@ -228,7 +228,7 @@ loop:
 		doc.Links = strings.Join(links, "\n")
 
 		batch.Index(url, doc)
-		if batch.Size() >= 10000 {
+		if batch.Size() >= config.Config.Index.BatchSize {
 			err = index.Batch(batch)
 			if err != nil {
 				return
