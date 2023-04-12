@@ -19,13 +19,3 @@
 
 [index]
 # path = "."
-
-[capsule]
-# certFile = "cert.pem"
-# keyFile = "key.pem"
-#
-# the port the server binds to
-# port = 1965
-#
-# the ip address the server binds to
-# address = 127.0.0.1
