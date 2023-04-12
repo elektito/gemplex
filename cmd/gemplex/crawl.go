@@ -383,6 +383,7 @@ func isBlacklisted(link string, parsedLink *url.URL) bool {
 		"127.0.0.1":             true,
 		"guardian.shit.cx":      true,
 		"mastogem.picasoft.net": true, // wants us to slow down (status code: 44)
+		"gmi.skyjake.fi",        // something wrong with the collected urls atm; temporary blacklist
 	}
 
 	if _, ok := blacklistedDomains[parsedLink.Hostname()]; ok {
@@ -407,10 +408,6 @@ func isBlacklisted(link string, parsedLink *url.URL) bool {
 		"gemini://geminispace.info/search",
 		"gemini://geminispace.info/v/",
 		"gemini://gemini.bunburya.eu/remini/",
-		"gemini://gmi.skyjake.fi/fonts/",
-		"gemini://gmi.skyjake.fi/gemlog/fonts/gemlog/~Cosmos/",
-		"gemini://gmi.skyjake.fi/~Cosmos/",
-		"gemini://gmi.skyjake.fi/lagrange/gemlog/~Cosmos/",
 	}
 
 	for _, prefix := range blacklistedPrefixes {
