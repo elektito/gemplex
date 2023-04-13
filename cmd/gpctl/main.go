@@ -356,17 +356,17 @@ func usage() {
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	if len(flag.Args()) < 1 {
 		usage()
 		os.Exit(1)
 	}
 
-	cmd, ok := commands[os.Args[1]]
+	cmd, ok := commands[flag.Arg(0)]
 	if !ok {
 		fmt.Println("Unknown command:", cmd)
 		usage()
 		os.Exit(1)
 	}
 
-	cmd.Handler(os.Args[2:])
+	cmd.Handler(flag.Args()[1:])
 }
