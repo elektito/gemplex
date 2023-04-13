@@ -124,15 +124,15 @@ func loadInitialIndex(done chan bool) {
 			idx.Add(pongIdx)
 		}
 	} else if pingExists {
-		log.Println("[index] Opening ping index...")
 		curIdx, err = gsearch.OpenIndex(pingFile, "ping")
 		utils.PanicOnErr(err)
 		idx.Add(curIdx)
+		log.Println("[index] Opened ping index.")
 	} else if pongExists {
-		log.Println("[index] Opening pong index...")
 		curIdx, err = gsearch.OpenIndex(pongFile, "pong")
 		utils.PanicOnErr(err)
 		idx.Add(curIdx)
+		log.Println("[index] Opened pong index.")
 	} else {
 		log.Println("[index] No index available. Creating ping index...")
 
