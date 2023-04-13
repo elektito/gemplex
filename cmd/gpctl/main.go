@@ -28,6 +28,11 @@ var commands map[string]Command
 
 func init() {
 	commands = map[string]Command{
+		"addseed": {
+			Info:       "Add new seed url to the database",
+			ShortUsage: "<url> [<url> ...]",
+			Handler:    handleAddSeedCommand,
+		},
 		"index": {
 			Info:       "Index the contents of the database",
 			ShortUsage: "<index-dir>",
@@ -48,6 +53,48 @@ func init() {
 			ShortUsage: "[-substr] <url>",
 			Handler:    handleUrlInfoCommand,
 		},
+	}
+}
+
+func handleAddSeedCommand(args []string) {
+	if len(args) == 0 {
+		fmt.Println("No urls passed to add.")
+		return
+	}
+
+	db, err := sql.Open("postgres", config.GetDbConnStr())
+	utils.PanicOnErr(err)
+	defer db.Close()
+
+	for _, ustr := range args {
+		u, err := url.Parse(ustr)
+		if err != nil {
+			fmt.Printf("Invalid url %s: %s\n", ustr, err)
+			return
+		}
+
+		if u.Scheme != "gemini" {
+			fmt.Printf("Invalid url scheme '%s'. Expected 'gemini'.\n", u.Scheme)
+			return
+		}
+
+		r, err := db.Exec(`
+insert into urls (url, hostname)
+values ($1, $2)
+on conflict (url) do nothing
+`, ustr, u.Hostname())
+		if err != nil {
+			fmt.Printf("Error inserting url into database: %s\n", err)
+			return
+		}
+
+		affected, err := r.RowsAffected()
+		utils.PanicOnErr(err)
+		if affected == 0 {
+			fmt.Println("URL already exists:", ustr)
+		} else {
+			fmt.Println("Added seed url:", u)
+		}
 	}
 }
 
