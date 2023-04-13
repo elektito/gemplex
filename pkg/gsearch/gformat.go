@@ -7,8 +7,8 @@ import (
 
 const highlightName = "gem"
 
-const defaultGemHighlightBefore = "[["
-const defaultGemHighlightAfter = "]]"
+const DefaultGemHighlightBefore = "[["
+const DefaultGemHighlightAfter = "]]"
 
 type FragmentFormatter struct {
 	before string
@@ -57,12 +57,12 @@ func (a *FragmentFormatter) Format(f *highlight.Fragment, orderedTermLocations h
 }
 
 func highlightConstructor(config map[string]interface{}, cache *registry.Cache) (highlight.FragmentFormatter, error) {
-	before := defaultGemHighlightBefore
+	before := DefaultGemHighlightBefore
 	beforeVal, ok := config["before"].(string)
 	if ok {
 		before = beforeVal
 	}
-	after := defaultGemHighlightAfter
+	after := DefaultGemHighlightAfter
 	afterVal, ok := config["after"].(string)
 	if ok {
 		after = afterVal
