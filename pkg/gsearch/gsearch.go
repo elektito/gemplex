@@ -181,7 +181,7 @@ func OpenIndex(path string, name string) (idx bleve.Index, err error) {
 }
 
 func IndexDb(index bleve.Index, cfg *config.Config, done chan bool) (err error) {
-	db, err := sql.Open("postgresql", cfg.GetDbConnStr())
+	db, err := sql.Open("postgres", cfg.GetDbConnStr())
 	if err != nil {
 		return
 	}
