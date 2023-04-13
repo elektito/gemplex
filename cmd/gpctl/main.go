@@ -79,8 +79,8 @@ func handleAddSeedCommand(args []string) {
 		}
 
 		r, err := db.Exec(`
-insert into urls (url, hostname)
-values ($1, $2)
+insert into urls (url, hostname, first_added)
+values ($1, $2, now())
 on conflict (url) do nothing
 `, ustr, u.Hostname())
 		if err != nil {
