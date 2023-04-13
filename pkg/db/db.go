@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"net/url"
 
-	"github.com/elektito/gemplex/pkg/config"
 	"github.com/elektito/gemplex/pkg/gparse"
 )
 
@@ -27,13 +26,7 @@ type UrlInfo struct {
 	ExternalBacklinks []gparse.Link
 }
 
-func QueryUrl(urlStr string, substr bool) (info UrlInfo, err error) {
-	db, err := sql.Open("postgres", config.GetDbConnStr())
-	if err != nil {
-		return
-	}
-	defer db.Close()
-
+func QueryUrl(db *sql.DB, urlStr string, substr bool) (info UrlInfo, err error) {
 	var whereClause string
 	if substr {
 		whereClause = "u.url like '%' || $1 || '%'"

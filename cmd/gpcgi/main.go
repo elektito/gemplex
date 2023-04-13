@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -22,7 +23,8 @@ import (
 )
 
 type Params struct {
-	ServerName string
+	SearchDaemonSocket string
+	ServerName         string
 }
 
 var (
@@ -30,15 +32,31 @@ var (
 	ErrBadUrl       = errors.New("Bad URL")
 )
 
+func usage() {
+	fmt.Printf(`Usage: %s [-config config-file] [-serve]
+
+If you pass -serve, the program will run a test gemini server,
+instead of running as a CGI script. This can be useful for
+testing purposes.`)
+}
+
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--serve" {
+	configFile := flag.String("config", "", "config file")
+	serve := flag.Bool("serve", false, "start testing gemini sesrver, instead of running as a cgi script.")
+	flag.Usage = usage
+	flag.Parse()
+
+	cfg := config.LoadConfig(*configFile)
+
+	if *serve {
 		// run as a gemini server. useful for debugging and testing.
-		testServe()
+		testServe(cfg)
 		return
 	}
 
 	params := Params{
-		ServerName: os.Getenv("SERVER_NAME"),
+		SearchDaemonSocket: cfg.Search.UnixSocketPath,
+		ServerName:         os.Getenv("SERVER_NAME"),
 	}
 	cgi(os.Stdin, os.Stdout, params)
 }
@@ -80,8 +98,9 @@ func cgi(r io.Reader, w io.Writer, params Params) {
 		return
 	}
 
-	conn, err := net.Dial("unix", config.Config.Search.UnixSocketPath)
+	conn, err := net.Dial("unix", params.SearchDaemonSocket)
 	if err != nil {
+		log.Println("Cannot connect to search backend:", err)
 		cgiErr(w, "Cannot connect to search backend")
 		return
 	}

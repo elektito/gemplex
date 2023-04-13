@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/elektito/gemplex/pkg/config"
 	"github.com/elektito/gemplex/pkg/gsearch"
 	"github.com/elektito/gemplex/pkg/utils"
 )
@@ -20,7 +19,7 @@ func search(done chan bool, wg *sync.WaitGroup) {
 	loadIndexOnce.Do(func() { loadInitialIndex(done) })
 
 	cleanupUnixSocket()
-	listener, err := net.Listen("unix", config.Config.Search.UnixSocketPath)
+	listener, err := net.Listen("unix", Config.Search.UnixSocketPath)
 	utils.PanicOnErr(err)
 
 	closing := false
@@ -44,7 +43,7 @@ func search(done chan bool, wg *sync.WaitGroup) {
 }
 
 func cleanupUnixSocket() {
-	err := os.Remove(config.Config.Search.UnixSocketPath)
+	err := os.Remove(Config.Search.UnixSocketPath)
 	if err != nil && !os.IsNotExist(err) {
 		log.Println("[search] Error cleaning up unix socket:", err)
 	}

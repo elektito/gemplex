@@ -15,6 +15,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/elektito/gemplex/pkg/config"
 	"github.com/elektito/gemplex/pkg/utils"
 )
 
@@ -69,15 +70,15 @@ func generateCert() tls.Certificate {
 	return cert
 }
 
-func testServe() {
+func testServe(cfg *config.Config) {
 	// generate a throw-away self-signed certificate
 	cert := generateCert()
 
-	cfg := tls.Config{
+	tlsCfg := tls.Config{
 		Certificates: []tls.Certificate{cert},
 	}
 	addr := "127.0.0.1:1965"
-	listener, err := tls.Listen("tcp", addr, &cfg)
+	listener, err := tls.Listen("tcp", addr, &tlsCfg)
 	utils.PanicOnErr(err)
 
 	log.Println("Listening on:", addr)
@@ -85,16 +86,17 @@ func testServe() {
 		conn, err := listener.Accept()
 		utils.PanicOnErr(err)
 
-		go handleConn(conn)
+		go handleConn(conn, cfg)
 	}
 }
 
-func handleConn(conn net.Conn) {
+func handleConn(conn net.Conn, cfg *config.Config) {
 	defer conn.Close()
 
 	log.Println("Accepted connection from:", conn.RemoteAddr())
 	params := Params{
-		ServerName: "localhost",
+		SearchDaemonSocket: cfg.Search.UnixSocketPath,
+		ServerName:         "localhost",
 	}
 	cgi(conn, conn, params)
 }

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
-	"github.com/elektito/gemplex/pkg/config"
 	"github.com/elektito/gemplex/pkg/gsearch"
 	"github.com/elektito/gemplex/pkg/utils"
 )
@@ -62,8 +61,8 @@ loop:
 }
 
 func loadInitialIndex(done chan bool) {
-	pingFile := path.Join(config.Config.Index.Path, "ping.idx")
-	pongFile := path.Join(config.Config.Index.Path, "pong.idx")
+	pingFile := path.Join(Config.Index.Path, "ping.idx")
+	pongFile := path.Join(Config.Index.Path, "pong.idx")
 
 	idx = bleve.NewIndexAlias()
 
@@ -140,7 +139,7 @@ func loadInitialIndex(done chan bool) {
 		curIdx, err = gsearch.NewIndex(pingFile, "ping")
 		utils.PanicOnErr(err)
 
-		err = gsearch.IndexDb(curIdx, done)
+		err = gsearch.IndexDb(curIdx, Config, done)
 		utils.PanicOnErr(err)
 
 		idx.Add(curIdx)
@@ -148,8 +147,8 @@ func loadInitialIndex(done chan bool) {
 }
 
 func indexDb(done chan bool) {
-	pingFile := path.Join(config.Config.Index.Path, "ping.idx")
-	pongFile := path.Join(config.Config.Index.Path, "pong.idx")
+	pingFile := path.Join(Config.Index.Path, "ping.idx")
+	pongFile := path.Join(Config.Index.Path, "pong.idx")
 
 	var newIdxFile string
 	var newIdxName string
@@ -169,7 +168,7 @@ func indexDb(done chan bool) {
 	newIdx, err := gsearch.NewIndex(newIdxFile, newIdxName)
 	utils.PanicOnErr(err)
 
-	err = gsearch.IndexDb(newIdx, done)
+	err = gsearch.IndexDb(newIdx, Config, done)
 	utils.PanicOnErr(err)
 
 	idx.Swap([]bleve.Index{newIdx}, []bleve.Index{curIdx})

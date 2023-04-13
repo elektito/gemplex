@@ -5,7 +5,6 @@ import (
 	"log"
 	"math"
 
-	"github.com/elektito/gemplex/pkg/config"
 	"github.com/elektito/gemplex/pkg/utils"
 	"github.com/lib/pq"
 )
@@ -109,11 +108,8 @@ func PageRank(links []Link) (ranks map[int64]float64) {
 
 // Perform PageRank on all the links in the database, and write all page/host
 // ranks to the database.
-func PerformPageRankOnDb() {
+func PerformPageRankOnDb(db *sql.DB) {
 	log.Println("Starting PageRank Calculation...")
-
-	db, err := sql.Open("postgres", config.GetDbConnStr())
-	utils.PanicOnErr(err)
 
 	links := make([]Link, 0)
 

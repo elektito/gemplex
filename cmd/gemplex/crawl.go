@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/a-h/gemini"
-	"github.com/elektito/gemplex/pkg/config"
 	"github.com/elektito/gemplex/pkg/gparse"
 	"github.com/elektito/gemplex/pkg/utils"
 )
@@ -336,7 +335,7 @@ func updateDbTempError(db *sql.DB, r VisitResult) {
 }
 
 func flusher(c <-chan VisitResult, done chan bool) {
-	db, err := sql.Open("postgres", config.GetDbConnStr())
+	db, err := sql.Open("postgres", Config.GetDbConnStr())
 	utils.PanicOnErr(err)
 	defer db.Close()
 
@@ -488,7 +487,7 @@ loop:
 }
 
 func getDueUrls(c chan<- string, done chan bool) {
-	db, err := sql.Open("postgres", config.GetDbConnStr())
+	db, err := sql.Open("postgres", Config.GetDbConnStr())
 	utils.PanicOnErr(err)
 	defer db.Close()
 
@@ -675,7 +674,7 @@ loop:
 }
 
 func cleaner(done chan bool) {
-	db, err := sql.Open("postgres", config.GetDbConnStr())
+	db, err := sql.Open("postgres", Config.GetDbConnStr())
 	utils.PanicOnErr(err)
 	defer db.Close()
 

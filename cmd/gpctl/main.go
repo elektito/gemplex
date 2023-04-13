@@ -21,7 +21,7 @@ import (
 type Command struct {
 	Info       string
 	ShortUsage string
-	Handler    func([]string)
+	Handler    func(*config.Config, []string)
 }
 
 var commands map[string]Command
@@ -56,13 +56,13 @@ func init() {
 	}
 }
 
-func handleAddSeedCommand(args []string) {
+func handleAddSeedCommand(cfg *config.Config, args []string) {
 	if len(args) == 0 {
 		fmt.Println("No urls passed to add.")
 		return
 	}
 
-	db, err := sql.Open("postgres", config.GetDbConnStr())
+	db, err := sql.Open("postgres", cfg.GetDbConnStr())
 	utils.PanicOnErr(err)
 	defer db.Close()
 
@@ -98,7 +98,7 @@ on conflict (url) do nothing
 	}
 }
 
-func handleIndexCommand(args []string) {
+func handleIndexCommand(cfg *config.Config, args []string) {
 	if len(args) != 1 {
 		usage()
 		os.Exit(1)
@@ -117,15 +117,18 @@ func handleIndexCommand(args []string) {
 	index, err := gsearch.NewIndex(indexDir, indexName)
 	utils.PanicOnErr(err)
 
-	err = gsearch.IndexDb(index, nil)
+	err = gsearch.IndexDb(index, cfg, nil)
 	utils.PanicOnErr(err)
 }
 
-func handlePageRankCommand(args []string) {
-	pagerank.PerformPageRankOnDb()
+func handlePageRankCommand(cfg *config.Config, args []string) {
+	db, err := sql.Open("postgres", cfg.GetDbConnStr())
+	utils.PanicOnErr(err)
+	pagerank.PerformPageRankOnDb(db)
+	db.Close()
 }
 
-func handleUrlInfoCommand(args []string) {
+func handleUrlInfoCommand(cfg *config.Config, args []string) {
 	fs := flag.NewFlagSet("url", flag.ExitOnError)
 
 	substr := fs.Bool("substr", false, "Search for the given substring in urls; first will be picked.")
@@ -136,8 +139,14 @@ func handleUrlInfoCommand(args []string) {
 		os.Exit(1)
 	}
 
+	conn, err := sql.Open("postgres", cfg.GetDbConnStr())
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
 	inputUrl := fs.Arg(0)
-	info, err := db.QueryUrl(inputUrl, *substr)
+	info, err := db.QueryUrl(conn, inputUrl, *substr)
 	if err == sql.ErrNoRows {
 		fmt.Println("Not found.")
 		os.Exit(1)
@@ -218,13 +227,13 @@ func handleUrlInfoCommand(args []string) {
 	}
 }
 
-func handleReparseCommand(args []string) {
+func handleReparseCommand(cfg *config.Config, args []string) {
 	// this sub-command re-parses all the contents in the database, checks if the
 	// title has changes, and if so, saves the new titles to the database again.
 	// This is useful, if our parsing algorithms change and we want to apply it
 	// to existing pages.
 
-	db, err := sql.Open("postgres", config.GetDbConnStr())
+	db, err := sql.Open("postgres", cfg.GetDbConnStr())
 	utils.PanicOnErr(err)
 	defer db.Close()
 
@@ -347,7 +356,7 @@ where contents.id = x.id
 }
 
 func usage() {
-	fmt.Printf("Usage: %s <command> <command-args>\n", os.Args[0])
+	fmt.Printf("Usage: %s [-config config-file] <command> <command-args>\n", os.Args[0])
 	fmt.Println("Available commands:")
 	for name, cmd := range commands {
 		fmt.Printf(" - %s %s\n", name, cmd.ShortUsage)
@@ -356,6 +365,12 @@ func usage() {
 }
 
 func main() {
+	configFile := flag.String("config", "", "config file")
+	flag.Usage = usage
+	flag.Parse()
+
+	cfg := config.LoadConfig(*configFile)
+
 	if len(flag.Args()) < 1 {
 		usage()
 		os.Exit(1)
@@ -368,5 +383,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	cmd.Handler(flag.Args()[1:])
+	cmd.Handler(cfg, flag.Args()[1:])
 }

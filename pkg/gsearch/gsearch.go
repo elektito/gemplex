@@ -180,9 +180,8 @@ func OpenIndex(path string, name string) (idx bleve.Index, err error) {
 	return
 }
 
-func IndexDb(index bleve.Index, done chan bool) (err error) {
-	dbConnStr := config.GetDbConnStr()
-	db, err := sql.Open("postgres", dbConnStr)
+func IndexDb(index bleve.Index, cfg *config.Config, done chan bool) (err error) {
+	db, err := sql.Open("postgresql", cfg.GetDbConnStr())
 	if err != nil {
 		return
 	}
@@ -228,7 +227,7 @@ loop:
 		doc.Links = strings.Join(links, "\n")
 
 		batch.Index(url, doc)
-		if batch.Size() >= config.Config.Index.BatchSize {
+		if batch.Size() >= cfg.Index.BatchSize {
 			err = index.Batch(batch)
 			if err != nil {
 				return

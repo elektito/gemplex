@@ -1,28 +1,38 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 
 	"github.com/elektito/gemplex/pkg/config"
 )
 
+var Config *config.Config
+
 func main() {
+	configFile := flag.String("config", "", "config file")
+	flag.Usage = usage
+	flag.Parse()
+
+	Config = config.LoadConfig(*configFile)
+
 	var cmds []string
 	allCmds := []string{"crawl", "rank", "index", "search"}
 
-	if len(config.Config.Args) == 0 {
+	if len(flag.Args()) == 0 {
 		cmds = allCmds
-	} else if config.Config.Args[0] == "all" {
+	} else if flag.Arg(0) == "all" {
 		cmds = allCmds
 	} else {
-		cmds = config.Config.Args
+		cmds = flag.Args()
 	}
 
 	go func() {
@@ -86,4 +96,30 @@ func main() {
 	wg.Wait()
 
 	log.Println("[gemplex] Done.")
+}
+
+func usage() {
+	fmt.Printf(`Gemplex Search Engine
+
+usage: %s [-config config_file] { all | <commands> }
+
+config_file is the name of the toml configuration file to load. If not
+specified, one of the following files (if present) is used, in order of
+preference: %s
+
+<commands> can be one or more of these commands, separated by spaces. If "all"
+is used, all daemons are launched.
+
+ - crawl: Start the crawler daemon. The crawler routinely crawls the geminispace
+   and stores the results in the database.
+
+ - rank: Start the periodic pagerank calculator damon.
+
+ - index: Start the periodic ping-pong indexer daemon. It builds, alternatingly,
+   an index named "ping" or "pong".
+
+ - search: Start the search daemon, which opens the latest index (either ping or
+   pong), and listens for search requests over a unix domain socket.
+
+`, os.Args[0], strings.Join(config.DefaultConfigFiles, ", "))
 }
