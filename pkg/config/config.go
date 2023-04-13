@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/elektito/gemplex/pkg/utils"
@@ -36,7 +37,7 @@ type ConfigType struct {
 	Args []string `toml:"-"`
 }
 
-const DefaultConfigFilename = "gemplex.toml"
+var DefaultConfigFiles = []string{"gemplex.toml", "/etc/gemplex.toml"}
 
 var Config ConfigType
 var ConfigFilename *string
@@ -46,12 +47,6 @@ func init() {
 	flag.Usage = usage
 	flag.Parse()
 	Config.Args = flag.Args()
-
-	usingDefaultConfigFile := false
-	if *ConfigFilename == "" {
-		*ConfigFilename = DefaultConfigFilename
-		usingDefaultConfigFile = true
-	}
 
 	// set default values
 	Config.Db.Name = "gemplex"
@@ -63,13 +58,31 @@ func init() {
 
 	Config.Search.UnixSocketPath = "/tmp/gsearch.sock"
 
-	f, err := os.Open(*ConfigFilename)
-	if err != nil && usingDefaultConfigFile {
-		log.Printf("Cannot open default config file %s; Proceeding with defaults.\n", *ConfigFilename)
-		return
-	} else if err != nil {
-		log.Fatal("Cannot open config file: ", *ConfigFilename)
+	var f *os.File
+	var err error
+	if *ConfigFilename != "" {
+		f, err = os.Open(*ConfigFilename)
+	} else {
+		for _, filename := range DefaultConfigFiles {
+			f, err = os.Open(filename)
+			if err == nil {
+				ConfigFilename = &filename
+				break
+			}
+		}
 	}
+
+	if err != nil {
+		if *ConfigFilename != "" {
+			log.Fatal("Cannot open config file: ", *ConfigFilename)
+		} else {
+			defaultFiles := strings.Join(DefaultConfigFiles, ", ")
+			log.Printf("Cannot open any of the default config files (%s); Proceeding with defaults.\n", defaultFiles)
+			return
+		}
+	}
+
+	log.Println("Using config file:", *ConfigFilename)
 
 	_, err = toml.DecodeReader(f, &Config)
 	if err != nil {
@@ -83,7 +96,8 @@ func usage() {
 usage: %s [-config config_file] { all | <commands> }
 
 config_file is the name of the toml configuration file to load. If not
-specified, %s is used.
+specified, one of the following files (if present) is used, in order of
+preference: %s
 
 <commands> can be one or more of these commands, separated by spaces. If "all"
 is used, all daemons are launched.
@@ -99,7 +113,7 @@ is used, all daemons are launched.
  - search: Start the search daemon, which opens the latest index (either ping or
    pong), and listens for search requests over a unix domain socket.
 
-`, DefaultConfigFilename, os.Args[0])
+`, os.Args[0], strings.Join(DefaultConfigFiles, ", "))
 }
 
 func GetDbConnStr() string {
