@@ -44,6 +44,7 @@ type VisitResult struct {
 	contents    []byte
 	contentType string
 	visitTime   time.Time
+	banned      bool
 }
 
 // error type used to say there was an error fetching robots.txt
@@ -206,6 +207,16 @@ func calcContentHash(contents []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
+func updateDbBanned(db *sql.DB, r VisitResult) {
+	q := `
+update urls
+set banned = $1
+where url = $2
+`
+	_, err := db.Exec(q, r.banned, r.url)
+	utils.PanicOnErr(err)
+}
+
 func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	tx, err := db.Begin()
 	utils.PanicOnErr(err)
@@ -344,6 +355,8 @@ loop:
 				// for our purposes we'll consider requiring input the same as
 				// permanent errors. we'll retry it, but a long time later.
 				updateDbPermanentError(db, r)
+			case r.banned:
+				updateDbBanned(db, r)
 			default:
 				updateDbTempError(db, r)
 			}
@@ -481,9 +494,10 @@ func getDueUrls(c chan<- string, done chan bool) {
 
 	rows, err := db.Query(
 		`select url from urls
-                 where last_visited is null or
-                       (status_code / 10 = 4 and last_visited + retry_time < now()) or
-                       (last_visited is not null and last_visited + retry_time < now())`,
+                 where not banned and
+                       (last_visited is null or
+                        (status_code / 10 = 4 and last_visited + retry_time < now()) or
+                        (last_visited is not null and last_visited + retry_time < now()))`,
 	)
 	utils.PanicOnErr(err)
 	defer rows.Close()
@@ -579,7 +593,7 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (pref
 	return
 }
 
-func seeder(output chan<- string, done chan bool) {
+func seeder(output chan<- string, visitResults chan VisitResult, done chan bool) {
 	client := gemini.NewClient()
 	robotsRules := map[string][]string{}
 	recentRobotsErrors := map[string]time.Time{}
@@ -632,7 +646,10 @@ loop:
 				continue
 			}
 			if isBanned(urlParsed, robotsPrefixes) {
-				// TODO somehow mark it as banned in db?
+				visitResults <- VisitResult{
+					url:    urlString,
+					banned: true,
+				}
 				continue
 			}
 
@@ -726,7 +743,7 @@ func crawl(done chan bool, wg *sync.WaitGroup) {
 	flushDone := make(chan bool)
 	cleanDone := make(chan bool)
 	go coordinator(nprocs, inputUrls, urlChan, coordDone)
-	go seeder(urlChan, seedDone)
+	go seeder(urlChan, visitResults, seedDone)
 	go flusher(visitResults, flushDone)
 	go cleaner(cleanDone)
 
