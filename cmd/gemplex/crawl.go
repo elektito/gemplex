@@ -563,7 +563,11 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (pref
 				case "indexer":
 					fallthrough
 				case "researcher":
-					prefixes = append(prefixes, prefix)
+					// an empty disallow (i.e "Disallow:"), means everything is
+					// allowed.
+					if prefix != "" {
+						prefixes = append(prefixes, prefix)
+					}
 					break uaLoop
 				}
 			}
