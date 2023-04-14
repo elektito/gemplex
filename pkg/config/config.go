@@ -43,6 +43,7 @@ func LoadConfig(configFilename string) *Config {
 	c.Db.Name = "gemplex"
 	c.Db.Port = -1
 	c.Db.Host = "/var/run/postgresql"
+	c.Db.SslMode = "require"
 
 	c.Index.Path = "."
 	c.Index.BatchSize = 200
@@ -74,9 +75,6 @@ func LoadConfig(configFilename string) *Config {
 	}
 
 	log.Println("Using config file:", configFilename)
-
-	// set default values
-	c.Db.SslMode = "require"
 
 	_, err = toml.DecodeReader(f, c)
 	if err != nil {
