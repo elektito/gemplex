@@ -15,10 +15,18 @@ Subject: Spam & Eggs
 
 Message body
 `
-	title, err := ParsePlain(text)
-	expected := "Spam & Eggs"
-	if err != nil || title != expected {
-		t.Fatalf("ParsePlain(.): expected %q, <nil>; got %q, %v", expected, title, err)
+	result := ParsePlain(text)
+	expectedTitle := "Spam & Eggs"
+	if result.Title != expectedTitle {
+		t.Fatalf("ParsePlain(.): expected %q for title, <nil>; got %q", expectedTitle, result.Title)
+	}
+
+	expectedText := `Spam & Eggs
+
+Message body
+`
+	if result.Text != expectedText {
+		t.Fatalf("ParsePlain(.): expected %q for text, <nil>; got %q", expectedText, result.Text)
 	}
 }
 
@@ -28,12 +36,40 @@ subject matter
 
 hello there!
 `
-	title, err := ParsePlain(text)
+	result := ParsePlain(text)
 	expected := "subject matter"
+	if result.Title != expected {
+		t.Fatalf("ParsePlain(.): expected %q, <nil>; got %q", expected, result.Title)
+	}
+}
+
+/*
+// this doesn't work correctly at the moment, and there's no easy way to fix
+// it. i'm just leaving it here for now
+func TestParseEmail2(t *testing.T) {
+	text := `X-Google-Language: POLISH,Latin2
+X-Google-Thread: 1045ba,c8575288f3977aed
+X-Google-Attributes: gid1088cb,public
+From: "Foo Bar" <foo@example.org>
+Subject: Re: no subject -- a raczej no comment :)
+Date: 2000/02/08
+Message-ID: <foo@expample.org>#1/1
+Content-Transfer-Encoding: 8bit
+Content-Type: text/plain; charset=iso-8859-2
+X-I-?: /me = J�czalik Micha� Jr (Salvador)
+Mime-Version: 1.0
+Newsgroups: pl.rec.ascii-art
+
+
+> foobar
+`
+	title, err := ParsePlain(text)
+	expected := "Re: no subject -- a raczej no comment :)"
 	if err != nil || title != expected {
 		t.Fatalf("ParsePlain(.): expected %q, <nil>; got %q, %v", expected, title, err)
 	}
 }
+*/
 
 func TestParsePage(t *testing.T) {
 	inputText := `
@@ -291,11 +327,71 @@ Status of This Memo
 	}
 }
 
+/*
+// This is a real case that we fail to parse corrctly, because there's
+// no empty line before the title begins. no easy way to fix, unfortunately.
+func TestParseRfcMissingNewLine(t *testing.T) {
+	text := `
+
+
+
+
+
+Network Working Group                                          D. Borman
+Request for Comments: 2675                      Berkeley Software Design
+Obsoletes: 2147                                               S. Deering
+Category: Standards Track                                          Cisco
+                                                               R. Hinden
+                                                                   Nokia
+                                                             August 1999
+                            IPv6 Jumbograms
+
+Status of this Memo
+
+   This document specifies an Internet standards track protocol for the
+   Internet community, and requests discussion and suggestions for
+   improvements.  Please refer to the current edition of the "Internet
+   Official Protocol Standards" (STD 1) for the standardization state
+   and status of this protocol.  Distribution of this memo is unlimited.
+`
+
+	title := parseRfc(text)
+	expected := "RFC 2675 - IPv6 Jumbograms"
+	if title != expected {
+		t.Fatalf("Expected RFC title '%s', got '%s'", expected, title)
+	}
+}
+*/
+
 func TestParseRfcNoMatch(t *testing.T) {
 	text := `foobar`
 
 	title := parseRfc(text)
 	if title != "" {
 		t.Fatalf("Expected non-matching text to return an empty title, instead got: %s", title)
+	}
+}
+
+func TestParsePlainCleanup(t *testing.T) {
+	u, _ := url.Parse("gemini://example.org/")
+	ct := "text/plain"
+	result, err := ParsePage([]byte(`foobar
+------------------------
+________________________
+~^*&^(*&^*(&^*&^*(&^(*&^[{}-=,./.,\|"''"]))))
+
+
+
+spam
+`), u, ct)
+	expected := `foobar
+spam
+`
+	if err != nil {
+		t.Fatalf("Expected no error, but  got: %v", err)
+	}
+
+	if result.Text != expected {
+		t.Fatalf("Expected text %q, got %q", expected, result.Text)
 	}
 }

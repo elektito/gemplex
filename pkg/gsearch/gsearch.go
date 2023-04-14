@@ -304,16 +304,11 @@ func Search(req SearchRequest, idx bleve.Index) (resp SearchResponse, err error)
 	resp.Duration = results.Took
 
 	for _, r := range results.Hits {
-		var snippet string
-		for _, s := range r.Fragments["Content"] {
-			if strings.Contains(s, DefaultGemHighlightBefore) && strings.Contains(s, DefaultGemHighlightAfter) {
-				snippet += s
-			}
-		}
+		snippet := strings.Join(r.Fragments["Content"], "…")
 
 		// this make sure snippets don't expand on many lines, and also
 		// cruicially, formatted lines are not rendered in clients that do that.
-		snippet = " " + strings.Replace(snippet, "\n", "…", -1)
+		snippet = " " + strings.Replace(snippet, "\n", " ", -1)
 
 		result := SearchResult{
 			Url:       r.ID,

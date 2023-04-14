@@ -3,7 +3,9 @@ package gparse
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"net/mail"
 	"net/url"
 	"regexp"
@@ -40,46 +42,58 @@ type Page struct {
 }
 
 var (
-	headingRe *regexp.Regexp
-	linkRe    *regexp.Regexp
-	preRe     *regexp.Regexp
-	rfcRe     *regexp.Regexp
+	headingRe        = regexp.MustCompile("^(#+) *(?P<heading>.+) *$")
+	linkRe           = regexp.MustCompile("^=> *(?P<linkurl>.*?)(?: +(?P<linktext>.+))? *$")
+	preRe            = regexp.MustCompile("^``` *(?P<prealt>.*)? *$")
+	rfcRe            = regexp.MustCompile(`(?s)Request for Comments: (?P<rfc>\d+)(?P<rest>.+)(?:Status of this Memo|Abstract)`)
+	nonAlphanumSeqRe = regexp.MustCompile("(?m)[`\"~!@#$%\\^&*\\-_=+/|<>'()\\[\\]{},.;:\\\\ ]{5,}")
+	spaceSeqRe       = regexp.MustCompile(`[ \t]{2,}`)
+	newlineSeqRe     = regexp.MustCompile(`(?m)\n{2,}`)
+	allWhitespaceRe  = regexp.MustCompile(`^\s+$`)
 )
 
-func init() {
-	headingRe = regexp.MustCompile("^(#+) *(?P<heading>.+) *$")
-	linkRe = regexp.MustCompile("^=> *(?P<linkurl>.*?)(?: +(?P<linktext>.+))? *$")
-	preRe = regexp.MustCompile("^``` *(?P<prealt>.*)? *$")
-	rfcRe = regexp.MustCompile(`(?s)Request for Comments: (?P<rfc>\d+)(?P<rest>.+)(?:Status of this Memo|Abstract)`)
-}
+func ParsePlain(text string) (result Page) {
+	result.Text = text
 
-func ParsePlain(text string) (title string, kind string, err error) {
 	// if it's an email, parse it and use the subject line as title
 	r := strings.NewReader(text)
 	msg, err := mail.ReadMessage(r)
 	if err == nil {
-		kind = "email"
+		result.Kind = "email"
 
-		title = msg.Header.Get("Subject")
-		if title != "" {
+		result.Title = msg.Header.Get("Subject")
+		if result.Title != "" {
+			ct := msg.Header.Get("Content-Type")
+
+			// yes, I've seen upper case content-type headers! :)
+			ct = strings.ToLower(ct)
+
+			if ct != "" && !strings.HasPrefix(ct, "text/") && !strings.HasPrefix(ct, "multipart/") {
+				result.Text = result.Title
+			} else {
+				body, err := io.ReadAll(msg.Body)
+				if err == nil {
+					result.Text = result.Title + "\n\n" + string(body)
+				}
+			}
+
 			return
 		}
 	}
 
 	// if it's an rfc, parse it and get the rfc title
 	if len(text) > 1024 {
-		title = parseRfc(text[:1024])
-		if title != "" {
-			kind = "rfc"
+		result.Title = parseRfc(text[:1024])
+		if result.Title != "" {
+			result.Kind = "rfc"
 			return
 		}
 	}
 
-	err = nil
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
-		title = strings.TrimSpace(line)
-		if title != "" && isMostlyAlphanumeric(title) {
+		result.Title = strings.TrimSpace(line)
+		if result.Title != "" && isMostlyAlphanumeric(result.Title) {
 			break
 		}
 	}
@@ -121,6 +135,11 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 			if isMostlyAlphanumeric(line) {
 				preText += line + "\n"
 			}
+			continue
+		}
+
+		if len(line) > 0 && line[0] == '>' {
+			line = line[1:]
 			continue
 		}
 
@@ -196,21 +215,7 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 	}
 
 	result.Title = strings.TrimSpace(result.Title)
-
-	if len(result.Title) > maxTitleLength {
-		result.Title = result.Title[:maxTitleLength]
-
-		if strings.HasSuffix(result.Title, " ") {
-			result.Title = strings.TrimSpace(result.Title)
-		} else if idx := strings.LastIndex(result.Title, " "); idx > 0 && idx > len(result.Title)-10 {
-			// the last word is likely incomplete, so we'll cut it.
-			result.Title = result.Title[:idx]
-		}
-
-		result.Title += "..."
-	}
-
-	result.Title = strings.ToValidUTF8(result.Title, "")
+	result.Title = shortenTitleIfNeeded(result.Title)
 
 	return
 }
@@ -218,26 +223,72 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 func ParsePage(body []byte, base *url.URL, contentType string) (result Page, err error) {
 	text, err := convertToString(body, contentType)
 	if err != nil {
-		fmt.Printf("Error converting to string: url=%s content-type=%s: %s\n", base.String(), contentType, err)
+		log.Printf("Error converting to string: url=%s content-type=%s: %s\n", base.String(), contentType, err)
 		return
 	}
 
 	switch {
 	case strings.HasPrefix(contentType, "text/plain"):
-		result.Text = text
-		result.Title, result.Kind, err = ParsePlain(text)
-		result.Lang = detectLang(text)
-		return
+		result = ParsePlain(text)
 	case strings.HasPrefix(contentType, "text/gemini"):
+		fallthrough
 	case strings.HasPrefix(contentType, "text/markdown"):
+		result = ParseGemtext(text, base)
 	default:
 		err = fmt.Errorf("Cannot process text type: %s", contentType)
 		return
 	}
 
-	result = ParseGemtext(text, base)
+	// cleanup the text a little
+	result.Text = nonAlphanumSeqRe.ReplaceAllLiteralString(result.Text, " ")
+	result.Text = spaceSeqRe.ReplaceAllLiteralString(result.Text, " ")
+
+	hadEllipses := strings.HasSuffix(result.Title, "...")
+	result.Title = nonAlphanumSeqRe.ReplaceAllLiteralString(result.Title, " ")
+	result.Title = spaceSeqRe.ReplaceAllLiteralString(result.Title, " ")
+	result.Title = strings.Trim(result.Title, " \t")
+	if hadEllipses && !strings.HasSuffix(result.Title, "...") {
+		result.Title += "..."
+	}
+
+	// remove any whitespace only lines
+	builder := strings.Builder{}
+	for _, line := range strings.Split(result.Text, "\n") {
+		if allWhitespaceRe.MatchString(line) {
+			continue
+		}
+		builder.WriteString(line)
+		builder.WriteRune('\n')
+	}
+	result.Text = builder.String()
+
+	// remove consecutive newlines
+	result.Text = newlineSeqRe.ReplaceAllLiteralString(result.Text, "\n")
+
+	result.Title = strings.ToValidUTF8(result.Title, "")
+
 	result.Lang = detectLang(result.Text)
+
 	return
+}
+
+func shortenTitleIfNeeded(title string) string {
+	if len(title) <= maxTitleLength {
+		return title
+	}
+
+	title = title[:maxTitleLength]
+
+	if strings.HasSuffix(title, " ") {
+		title = strings.TrimSpace(title)
+	} else if idx := strings.LastIndex(title, " "); idx > 0 && idx > len(title)-10 {
+		// the last word is likely incomplete, so we'll cut it.
+		title = title[:idx]
+	}
+
+	title += "..."
+
+	return title
 }
 
 func detectLang(text string) string {

@@ -238,7 +238,7 @@ func handleReparseCommand(cfg *config.Config, args []string) {
 	defer db.Close()
 
 	rows, err := db.Query(`
-select c.id, content, title, content_type, lang, kind, u.url
+select c.id, content, content_text, title, content_type, lang, kind, u.url
 from contents c
 join urls u on u.content_id=c.id
 `)
@@ -248,6 +248,7 @@ join urls u on u.content_id=c.id
 	changedTitles := map[int64]string{}
 	changedKinds := map[int64]string{}
 	changedLangs := map[int64]string{}
+	changedTexts := map[int64]string{}
 	i := 0
 	for rows.Next() {
 		var id int64
@@ -257,9 +258,10 @@ join urls u on u.content_id=c.id
 		var oldLang string
 		var oldKindNull sql.NullString
 		var oldLangNull sql.NullString
+		var oldText string
 		var us string
 		var contentType string
-		err = rows.Scan(&id, &blob, &oldTitle, &contentType, &oldLangNull, &oldKindNull, &us)
+		err = rows.Scan(&id, &blob, &oldText, &oldTitle, &contentType, &oldLangNull, &oldKindNull, &us)
 		utils.PanicOnErr(err)
 
 		if oldLangNull.Valid {
@@ -293,6 +295,11 @@ join urls u on u.content_id=c.id
 		if rr.Lang != oldLang {
 			fmt.Printf("Lang change: '%s' => '%s'  url=%s  cid=%d\n", oldLang, rr.Lang, u.String(), id)
 			changedLangs[id] = rr.Lang
+		}
+
+		if rr.Text != oldText {
+			fmt.Println("Text change")
+			changedTexts[id] = rr.Text
 		}
 
 		i++
@@ -351,6 +358,41 @@ where contents.id = x.id
 `
 	_, err = db.Exec(q, pq.Array(ids), pq.Array(values))
 	utils.PanicOnErr(err)
+
+	fmt.Printf("---- applying %d changed texts ----\n", len(changedTexts))
+	ids = make([]int64, 0)
+	values = make([]string, 0)
+	for id, value := range changedTexts {
+		ids = append(ids, id)
+		values = append(values, value)
+	}
+	q = `
+update contents
+set content_text = x.content_text
+from
+    (select unnest($1::bigint[]) id, unnest($2::text[]) content_text) x
+where contents.id = x.id
+`
+	// since text size is large, we'll split it into batches to make sure we
+	// don't run into a "broken pipe" error
+	batchSize := 1000
+	batches := len(values) / batchSize
+	if len(values)%batchSize != 0 {
+		batches += 1
+	}
+	for i := 0; i < batches; i++ {
+		start := i * batchSize
+		end := (i + 1) * batchSize
+		if end > len(values) {
+			end = len(values)
+		}
+		values_batch := values[start:end]
+		ids_batch := ids[start:end]
+
+		fmt.Printf("Writing batch %d (%d-%d)...\n", i, start, end)
+		_, err = db.Exec(q, pq.Array(ids_batch), pq.Array(values_batch))
+		utils.PanicOnErr(err)
+	}
 
 	fmt.Printf("Done.")
 }
