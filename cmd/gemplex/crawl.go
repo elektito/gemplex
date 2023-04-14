@@ -707,6 +707,25 @@ func logSizeGroups(sizeGroups map[int]int) {
 	log.Println(msg)
 }
 
+func dumpCrawlerState(filename string, nprocs int, urls [][]string) {
+	f, err := os.Create(filename)
+	utils.PanicOnErr(err)
+	defer f.Close()
+
+	for i := 0; i < nprocs; i++ {
+		if len(urls[i]) == 0 {
+			continue
+		}
+
+		f.WriteString(fmt.Sprintf("---- channel %d ----\n", i))
+		for _, u := range urls[i] {
+			f.WriteString(u + "\n")
+		}
+	}
+
+	log.Println("[crawl] Dumped state to:", filename)
+}
+
 func crawl(done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -785,22 +804,9 @@ loop:
 		}
 	}
 
-	f, err := os.Create("state.gc")
-	utils.PanicOnErr(err)
-	defer f.Close()
-
-	for i := 0; i < nprocs; i++ {
-		if len(urls[i]) == 0 {
-			continue
-		}
-
-		f.WriteString(fmt.Sprintf("---- channel %d ----\n", i))
-		for _, u := range urls[i] {
-			f.WriteString(u + "\n")
-		}
+	if *CrawlerStateFile != "" {
+		dumpCrawlerState(*CrawlerStateFile, nprocs, urls)
 	}
-
-	log.Println("[crawl] Wrote channel contents to state.gc")
 
 	log.Println("[crawl] Done.")
 }

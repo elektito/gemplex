@@ -17,9 +17,15 @@ import (
 )
 
 var Config *config.Config
+var CrawlerStateFile *string
 
 func main() {
 	configFile := flag.String("config", "", "config file")
+	CrawlerStateFile = flag.String(
+		"dump-crawler-state",
+		"",
+		"Dump crawler state on shutdown to the given filename (by default state will not be dumped).",
+	)
 	flag.Usage = usage
 	flag.Parse()
 
@@ -103,11 +109,20 @@ func main() {
 func usage() {
 	fmt.Printf(`Gemplex Search Engine
 
-usage: %s [-config config_file] { all | <commands> }
+usage: %s [flags] { all | <commands> }
 
-config_file is the name of the toml configuration file to load. If not
-specified, one of the following files (if present) is used, in order of
-preference: %s
+The following flags are available:
+
+-config <filename>
+
+    config_file is the name of the toml configuration file to load. If not
+    specified, one of the following files (if present) is used, in order of
+    preference: %s
+
+-dump-crawler-state <filename>
+
+    Dump crawler state to a file with the given name. Could be useful for
+    debugging. By default, state will not be dumped.
 
 <commands> can be one or more of these commands, separated by spaces. If "all"
 is used, all daemons are launched.
