@@ -37,7 +37,7 @@ func usage() {
 
 If you pass -serve, the program will run a test gemini server,
 instead of running as a CGI script. This can be useful for
-testing purposes.`)
+testing purposes.`, os.Args[0])
 }
 
 func main() {
