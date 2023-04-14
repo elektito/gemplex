@@ -14,8 +14,9 @@
 # database password:
 # password = "verystringpassword"
 #
-# whether to use ssl to connect to the database or not:
-# sslmode = false
+# whether to use ssl to connect to the database or not.
+# allowed values: require (default), verify-full, verify-ca, disable
+# sslmode = "require"
 
 [index]
 # path = "."

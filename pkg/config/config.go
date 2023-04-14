@@ -17,7 +17,7 @@ type Config struct {
 		Port     int
 		User     string
 		Password string
-		SslMode  bool
+		SslMode  string
 	}
 
 	Index struct {
@@ -75,6 +75,9 @@ func LoadConfig(configFilename string) *Config {
 
 	log.Println("Using config file:", configFilename)
 
+	// set default values
+	c.Db.SslMode = "require"
+
 	_, err = toml.DecodeReader(f, c)
 	if err != nil {
 		utils.PanicOnErr(err)
@@ -84,12 +87,16 @@ func LoadConfig(configFilename string) *Config {
 
 func (c *Config) GetDbConnStr() string {
 	s := fmt.Sprintf(
-		"dbname=%s sslmode=%t host=%s",
+		"dbname=%s sslmode=%s host=%s",
 		c.Db.Name, c.Db.SslMode, c.Db.Host,
 	)
 
 	if c.Db.Port > 0 {
 		s += fmt.Sprintf(" port=%d", c.Db.Port)
+	}
+
+	if c.Db.User != "" {
+		s += fmt.Sprintf(" user=%s", c.Db.User)
 	}
 
 	if c.Db.Password != "" {
