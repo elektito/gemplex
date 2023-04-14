@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/elektito/gemplex/pkg/config"
+	"github.com/elektito/gemplex/pkg/gcrawler"
 	"github.com/elektito/gemplex/pkg/utils"
 )
 
@@ -212,11 +214,20 @@ loop:
 	for rows.Next() {
 		var doc Doc
 		var links pq.StringArray
-		var url string
+		var urlStr string
 		var lang sql.NullString
-		err = rows.Scan(&url, &doc.Title, &doc.Content, &lang, &links, &doc.PageRank, &doc.HostRank)
+		err = rows.Scan(&urlStr, &doc.Title, &doc.Content, &lang, &links, &doc.PageRank, &doc.HostRank)
 		if err != nil {
 			return
+		}
+
+		// in case there are pages we've fetched before adding blacklist rules
+		var urlParsed *url.URL
+		urlParsed, err = url.Parse(urlStr)
+		if err != nil {
+			log.Printf("WARNING: URL stored in db cannot be parsed: url=%s error=%s\n", urlStr, err)
+		} else if gcrawler.IsBlacklisted(urlStr, urlParsed) {
+			continue
 		}
 
 		if lang.Valid {
@@ -226,7 +237,7 @@ loop:
 		}
 		doc.Links = strings.Join(links, "\n")
 
-		batch.Index(url, doc)
+		batch.Index(urlStr, doc)
 		if batch.Size() >= cfg.Index.BatchSize {
 			err = index.Batch(batch)
 			if err != nil {
