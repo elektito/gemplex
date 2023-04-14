@@ -40,6 +40,7 @@ type VisitResult struct {
 	url         string
 	error       error
 	statusCode  int
+	meta        string
 	page        gparse.Page
 	contents    []byte
 	contentType string
@@ -151,6 +152,7 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 			log.Printf("[crawl][%s] Error: %s url=%s\n", visitorId, err, urlStr)
 			results <- VisitResult{
 				url:        urlStr,
+				meta:       meta,
 				error:      err,
 				statusCode: -1,
 			}
@@ -165,6 +167,7 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 				results <- VisitResult{
 					url:         urlStr,
 					statusCode:  code,
+					meta:        meta,
 					contentType: contentType,
 					visitTime:   time.Now(),
 					error:       err,
@@ -173,6 +176,7 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 				results <- VisitResult{
 					url:         urlStr,
 					statusCode:  code,
+					meta:        meta,
 					page:        page,
 					contents:    body,
 					contentType: contentType,
@@ -182,6 +186,7 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 		} else {
 			results <- VisitResult{
 				url:        urlStr,
+				meta:       meta,
 				error:      fmt.Errorf("STATUS: %d META: %s", code, meta),
 				statusCode: code,
 			}
@@ -310,6 +315,33 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	utils.PanicOnErr(err)
 }
 
+func updateDbSlowDownError(db *sql.DB, r VisitResult) {
+	// do whatever we do for temporary errors first
+	updateDbTempError(db, r)
+
+	// then also mark the hostname for slowdown
+	uparsed, err := url.Parse(r.url)
+	if err != nil {
+		return
+	}
+
+	intervalInt, err := strconv.Atoi(r.meta)
+	if err != nil {
+		return
+	}
+
+	interval := time.Duration(intervalInt) * time.Second
+	hostname := uparsed.Hostname()
+
+	q := `
+update hosts
+set slowdown_until = now() + $1
+where hostname = $2
+`
+	_, err = db.Exec(q, interval, hostname)
+	utils.PanicOnErr(err)
+}
+
 func updateDbPermanentError(db *sql.DB, r VisitResult) {
 	_, err := db.Exec(
 		`update urls set
@@ -349,6 +381,8 @@ loop:
 			// parsing/encoding error after the page was successfully fetched.
 			case r.statusCode/10 == 2 && r.error == nil:
 				updateDbSuccessfulVisit(db, r)
+			case r.statusCode == 44: // SLOW DOWN
+				updateDbSlowDownError(db, r)
 			case r.statusCode/10 == 5: // TEMPORARY ERROR
 				fallthrough
 			case r.statusCode/10 == 1: // REQUIRES INPUT
@@ -445,13 +479,14 @@ func getDueUrls(c chan<- string, done chan bool) {
 	utils.PanicOnErr(err)
 	defer db.Close()
 
-	rows, err := db.Query(
-		`select url from urls
-                 where not banned and
-                       (last_visited is null or
-                        (status_code / 10 = 4 and last_visited + retry_time < now()) or
-                        (last_visited is not null and last_visited + retry_time < now()))`,
-	)
+	rows, err := db.Query(`
+select url from urls u
+join hosts h on u.hostname = h.hostname
+where not banned and (h.slowdown_until is null or h.slowdown_until < now()) and
+   (last_visited is null or
+    (status_code / 10 = 4 and last_visited + retry_time < now()) or
+    (last_visited is not null and last_visited + retry_time < now()))
+`)
 	utils.PanicOnErr(err)
 	defer rows.Close()
 
