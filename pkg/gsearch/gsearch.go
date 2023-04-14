@@ -29,6 +29,7 @@ type Doc struct {
 	Links    string
 	PageRank float64
 	HostRank float64
+	Kind     string
 }
 
 type RankedSort struct {
@@ -161,6 +162,12 @@ func NewIndex(path string, name string) (idx bleve.Index, err error) {
 	pageRankFieldMapping.IncludeTermVectors = false
 	docMapping.AddFieldMappingsAt("HostRank", hostRankFieldMapping)
 
+	kindFieldMapping := bleve.NewTextFieldMapping()
+	kindFieldMapping.Index = true
+	kindFieldMapping.IncludeInAll = false
+	kindFieldMapping.IncludeTermVectors = false
+	docMapping.AddFieldMappingsAt("Kind", kindFieldMapping)
+
 	idxMapping.AddDocumentMapping("Page", docMapping)
 
 	idx, err = bleve.New(path, idxMapping)
@@ -194,7 +201,7 @@ with x as
     (select dst_url_id uid, array_agg(text) links
      from links
      group by dst_url_id)
-select u.url, c.title, c.content_text, c.lang, x.links, u.rank, h.rank
+select u.url, c.title, c.content_text, c.lang, c.kind, x.links, u.rank, h.rank
 from x
 join urls u on u.id = uid
 join contents c on c.id = u.content_id
@@ -216,7 +223,8 @@ loop:
 		var links pq.StringArray
 		var urlStr string
 		var lang sql.NullString
-		err = rows.Scan(&urlStr, &doc.Title, &doc.Content, &lang, &links, &doc.PageRank, &doc.HostRank)
+		var kind sql.NullString
+		err = rows.Scan(&urlStr, &doc.Title, &doc.Content, &lang, &kind, &links, &doc.PageRank, &doc.HostRank)
 		if err != nil {
 			return
 		}
@@ -230,12 +238,19 @@ loop:
 			continue
 		}
 
+		doc.Lang = ""
 		if lang.Valid {
 			doc.Lang = lang.String
-		} else {
-			doc.Lang = ""
 		}
+
+		doc.Kind = ""
+		if kind.Valid {
+			doc.Kind = kind.String
+		}
+
 		doc.Links = strings.Join(links, "\n")
+
+		doc.Title = strings.ToValidUTF8(doc.Title, "")
 
 		batch.Index(urlStr, doc)
 		if batch.Size() >= cfg.Index.BatchSize {
@@ -274,14 +289,28 @@ func Search(req SearchRequest, idx bleve.Index) (resp SearchResponse, err error)
 		return
 	}
 
-	q1 := bleve.NewMatchQuery(req.Query)
-	q1.SetField("Content")
+	shouldContent := bleve.NewMatchQuery(req.Query)
+	shouldContent.SetField("Content")
 
-	q2 := bleve.NewMatchQuery(req.Query)
-	q2.SetField("Title")
-	q2.SetBoost(2.0)
+	shouldTitle := bleve.NewMatchQuery(req.Query)
+	shouldTitle.SetField("Title")
+	shouldTitle.SetBoost(2.0)
 
-	q := bleve.NewDisjunctionQuery(q1, q2)
+	mustNotEmail := bleve.NewTermQuery("email")
+	mustNotEmail.SetField("Kind")
+
+	mustNotRfc := bleve.NewTermQuery("rfc")
+	mustNotRfc.SetField("Kind")
+
+	mustNotIrc := bleve.NewTermQuery("irc")
+	mustNotIrc.SetField("Kind")
+
+	q := bleve.NewBooleanQuery()
+	q.AddShould(shouldContent)
+	q.AddShould(shouldTitle)
+	q.AddMustNot(mustNotEmail)
+	q.AddMustNot(mustNotRfc)
+	q.AddMustNot(mustNotIrc)
 
 	highlightStyle := req.HighlightStyle
 	if highlightStyle == "" {
