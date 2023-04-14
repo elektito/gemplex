@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/elektito/gemplex/pkg/config"
+	"github.com/elektito/gemplex/pkg/gcrawler"
 )
 
 var Config *config.Config
@@ -23,6 +24,7 @@ func main() {
 	flag.Parse()
 
 	Config = config.LoadConfig(*configFile)
+	updateBlacklist()
 
 	var cmds []string
 	allCmds := []string{"crawl", "rank", "index", "search"}
@@ -122,4 +124,14 @@ is used, all daemons are launched.
    pong), and listens for search requests over a unix domain socket.
 
 `, os.Args[0], strings.Join(config.DefaultConfigFiles, ", "))
+}
+
+func updateBlacklist() {
+	for _, domain := range Config.Blacklist.Domains {
+		gcrawler.AddDomainToBlacklist(domain)
+	}
+
+	for _, prefix := range Config.Blacklist.Prefixes {
+		gcrawler.AddPrefixToBlacklist(prefix)
+	}
 }

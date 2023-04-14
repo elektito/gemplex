@@ -32,6 +32,11 @@ type Config struct {
 	Search struct {
 		UnixSocketPath string
 	}
+
+	Blacklist struct {
+		Domains  []string
+		Prefixes []string
+	}
 }
 
 var DefaultConfigFiles = []string{"gemplex.toml", "/etc/gemplex.toml"}

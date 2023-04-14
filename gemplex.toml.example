@@ -25,3 +25,9 @@
 # when indexing; higher values make indexing faster, but
 # also increase memory consumption.
 # batchSize = 200
+
+[blacklist]
+# you can specify extra blacklisted domain/prefixes here:
+#
+# domains = []
+# prefixes = []
