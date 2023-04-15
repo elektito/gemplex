@@ -211,7 +211,7 @@ Found {{ .TotalResults }} result(s) in {{ .Duration }}.
 	data := Page{
 		Query:        req.Query,
 		QueryEscaped: url.QueryEscape(req.Query),
-		Duration:     resp.Duration,
+		Duration:     resp.Duration.Round(time.Millisecond / 10),
 		Title:        "Gemplex Gemini Search",
 		Results:      resp.Results,
 		TotalResults: resp.TotalResults,
