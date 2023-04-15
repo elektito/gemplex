@@ -9,7 +9,7 @@ Gemplex is an experimental (like all things Gemini) Search Engine for Gemini wri
 
 Why another search engine? There's no grand reasoning really but here's a gemlog post I wrote about it:
 
-=> gemini://elektito.com/gemlog/12-gemplex-search-engine
+=> gemini://elektito.com/gemlog/12-gemplex-search-engine Introducing Gemplex Search Engine
 
 ## More info
 => /crawler 🕷️ Crawler Notes
