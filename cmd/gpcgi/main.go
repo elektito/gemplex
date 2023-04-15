@@ -174,9 +174,9 @@ Found {{ .TotalResults }} result(s) in {{ .Duration }}.
 {{- end }}
 {{- if lt .Page .PageCount }}
 => {{ .BaseUrl }}/search/{{ inc .Page }}?{{ .QueryEscaped }} Next Page ({{ inc .Page }} of {{ .PageCount }} pages)
-{{ end -}}
-
 {{ end }}
+=> / Home
+{{ end -}}
 
 {{- template "Page" . }}
 `
