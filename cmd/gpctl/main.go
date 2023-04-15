@@ -78,6 +78,12 @@ func handleAddSeedCommand(cfg *config.Config, args []string) {
 			return
 		}
 
+		u, err = gparse.NormalizeUrl(u)
+		if err != nil {
+			fmt.Printf("Could not normalize url %s: %s\n", u, err)
+			return
+		}
+
 		r, err := db.Exec(`
 insert into urls (url, hostname, first_added)
 values ($1, $2, now())

@@ -297,7 +297,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 			`insert into urls (url, hostname, first_added) values ($1, $2, now())
                      on conflict (url) do update set url = excluded.url
                      returning id`,
-			link.Url, u.Hostname(),
+			link.Url, u.Host,
 		).Scan(&destUrlId)
 		if err != nil {
 			log.Println("[crawl] DB error inserting link url:", link.Url)
@@ -331,7 +331,7 @@ func updateDbSlowDownError(db *sql.DB, r VisitResult) {
 	}
 
 	interval := time.Duration(intervalInt) * time.Second
-	hostname := uparsed.Hostname()
+	hostname := uparsed.Host
 
 	q := `
 update hosts

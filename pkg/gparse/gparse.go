@@ -166,7 +166,7 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 				continue
 			}
 			u = base.ResolveReference(u)
-			u, err = normalizeUrl(u)
+			u, err = NormalizeUrl(u)
 			if err != nil {
 				continue
 			}
@@ -407,7 +407,7 @@ func convertToString(body []byte, contentType string) (s string, err error) {
 	return
 }
 
-func normalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
+func NormalizeUrl(u *url.URL) (outputUrl *url.URL, err error) {
 	// remove default gemini port, since purell only supports doing this with
 	// http and https.
 	if u.Scheme == "gemini" && u.Port() == "1965" {
