@@ -507,7 +507,7 @@ loop:
 func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (prefixes []string, err error) {
 	prefixes = make([]string, 0)
 
-	robotsUrl, err := url.Parse("gemini://" + u.Hostname() + "/robots.txt")
+	robotsUrl, err := url.Parse("gemini://" + u.Host + "/robots.txt")
 	if err != nil {
 		return
 	}
@@ -523,7 +523,7 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (pref
 	}
 
 	if code/10 != 2 {
-		err = fmt.Errorf("Cannot read robots.txt for hostname %s: got code %d", u.Hostname(), code)
+		err = fmt.Errorf("Cannot read robots.txt for hostname %s: got code %d", u.Host, code)
 		return
 	}
 
@@ -586,25 +586,25 @@ func seeder(output chan<- string, visitResults chan VisitResult, done chan bool)
 	robotsRules := map[string][]string{}
 	recentRobotsErrors := map[string]time.Time{}
 	getOrFetchRobotsPrefixes := func(u *url.URL) (results []string, err error) {
-		timestamp, ok := recentRobotsErrors[u.Hostname()]
+		timestamp, ok := recentRobotsErrors[u.Host]
 		if ok {
 			wait := time.Now().Sub(timestamp)
 			if wait > robotsErrorWaitTime {
-				delete(recentRobotsErrors, u.Hostname())
+				delete(recentRobotsErrors, u.Host)
 			} else {
 				err = &RecentRobotsError{}
 				return
 			}
 		}
 
-		results, ok = robotsRules[u.Hostname()]
+		results, ok = robotsRules[u.Host]
 		if !ok {
 			results, err = fetchRobotsRules(u, client, "seeder")
 			if err != nil {
-				recentRobotsErrors[u.Hostname()] = time.Now()
+				recentRobotsErrors[u.Host] = time.Now()
 				return
 			}
-			robotsRules[u.Hostname()] = results
+			robotsRules[u.Host] = results
 		}
 		return
 	}
