@@ -1,6 +1,6 @@
 # Gemplex Crawler
 
-Gemplex tries to be slow and careful when crawling the Geminispace. robots.txt limitations are honored, and queries are timed so that a single host is not hit more than once a second.
+Gemplex tries to be slow and careful when crawling the Geminispace. robots.txt limitations are honored, and queries are timed so that a single host is not hit more than once a second. "SLOW DOWN" responses from servers (code 44) are also honored.
 
 The crawler's user-agent string is "elektito/gemplex". You can use this user-agent to set limitations specific to the Gemplex crawler. Any limitations set for "crawler", "indexer", and "researcher" crawlers are always taken into account, as described in the spec:
 
