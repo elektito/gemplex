@@ -30,7 +30,6 @@ const (
 	revisitTimeIncrementNoChange = "2 days"
 	revisitTimeAfterChange       = "2 days"
 	maxRevisitTime               = "1 month"
-	minRedirectRetryAfterChange  = "1 week"
 	maxRedirects                 = 5
 	crawlerUserAgent             = "elektito/gemplex"
 	robotsErrorWaitTime          = 1 * time.Hour
