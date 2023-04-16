@@ -56,8 +56,9 @@ func (e RecentRobotsError) Error() string {
 
 var _ error = (*RecentRobotsError)(nil)
 
-func readGemini(ctx context.Context, client *gemini.Client, u *url.URL, visitorId string) (body []byte, code int, meta string, err error) {
+func readGemini(ctx context.Context, client *gemini.Client, u *url.URL, visitorId string) (body []byte, code int, meta string, finalUrl *url.URL, err error) {
 	redirs := 0
+	finalUrl = u
 redirect:
 	resp, certs, auth, ok, err := client.RequestURL(ctx, u)
 	if err != nil {
@@ -128,6 +129,10 @@ redirect:
 				"[crawl][%s] Redirecting to: %s (from %s)\n",
 				visitorId, target.String(), u.String())
 			u = target
+			finalUrl, err = gparse.NormalizeUrl(target)
+			if err != nil {
+				finalUrl = u
+			}
 			goto redirect
 		}
 
@@ -146,7 +151,7 @@ func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
 		log.Printf("[crawl][%s] Processing: %s\n", visitorId, urlStr)
 		u, _ := url.Parse(urlStr)
 
-		body, code, meta, err := readGemini(ctx, client, u, visitorId)
+		body, code, meta, u, err := readGemini(ctx, client, u, visitorId)
 		if err != nil {
 			log.Printf("[crawl][%s] Error: %s url=%s\n", visitorId, err, urlStr)
 			results <- VisitResult{
@@ -511,7 +516,7 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (pref
 		return
 	}
 
-	body, code, _, err := readGemini(context.Background(), client, robotsUrl, visitorId)
+	body, code, _, _, err := readGemini(context.Background(), client, robotsUrl, visitorId)
 	if err != nil {
 		return
 	}
