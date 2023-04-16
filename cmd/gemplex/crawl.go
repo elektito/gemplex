@@ -669,16 +669,21 @@ func cleaner(done chan bool) {
 
 loop:
 	for {
+		start := time.Now()
 		result, err := db.Exec(`
 delete from contents c
 where not exists (
-    select id from urls where content_id=c.id)`)
+    select 1 from urls where content_id=c.id)`)
 		utils.PanicOnErr(err)
+		end := time.Now()
+		elapsed := end.Sub(start).Round(time.Millisecond)
 
 		affected, err := result.RowsAffected()
 		utils.PanicOnErr(err)
 		if affected > 0 {
-			log.Printf("[crawl][cleaner] Removed %d dangling objects from contents table.\n", affected)
+			log.Printf("[crawl][cleaner] Removed %d dangling objects from contents table in %s.\n", affected, elapsed)
+		} else {
+			log.Printf("[crawl][cleaner] No dangling found objects in contents table (query took %s)\n", elapsed)
 		}
 
 		select {
