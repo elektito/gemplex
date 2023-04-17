@@ -9,6 +9,7 @@ require (
 	github.com/blevesearch/bleve/v2 v2.3.7
 	github.com/elektito/whatlanggo v1.1.1-elektito
 	github.com/lib/pq v1.10.7
+	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/net v0.8.0
 	golang.org/x/text v0.8.0
 )

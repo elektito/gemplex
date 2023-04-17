@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
 	"net/url"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
+	"syscall"
 
 	"github.com/elektito/gemplex/pkg/config"
 	"github.com/elektito/gemplex/pkg/db"
@@ -16,6 +19,7 @@ import (
 	"github.com/elektito/gemplex/pkg/pagerank"
 	"github.com/elektito/gemplex/pkg/utils"
 	"github.com/lib/pq"
+	"golang.org/x/exp/slices"
 )
 
 type Command struct {
@@ -32,6 +36,13 @@ func init() {
 			Info:       "Add new seed url to the database",
 			ShortUsage: "<url> [<url> ...]",
 			Handler:    handleAddSeedCommand,
+		},
+		"delhost": {
+			Info: `Delete a host (could be hostname:port) from the database.
+   All urls and links will be deleted, unless referenced by links from
+   other capsules. Content ids for all urls will be cleared regardless.`,
+			ShortUsage: "<host-name>",
+			Handler:    handleDelHostCommand,
 		},
 		"index": {
 			Info:       "Index the contents of the database",
@@ -102,6 +113,171 @@ on conflict (url) do nothing
 			fmt.Println("Added seed url:", u)
 		}
 	}
+}
+
+func handleDelHostCommand(cfg *config.Config, args []string) {
+	type Link struct {
+		src int64
+		dst int64
+	}
+
+	if len(args) == 0 {
+		fmt.Println("No hostname passed.")
+		return
+	}
+
+	if len(args) > 1 {
+		fmt.Println("Only one hostname allowed.")
+		return
+	}
+
+	hostname := args[0]
+
+	fmt.Println(cfg.GetDbConnStr())
+	db, err := sql.Open("postgres", cfg.GetDbConnStr())
+	utils.PanicOnErr(err)
+	defer db.Close()
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	tx, err := db.BeginTx(ctx, nil)
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		signal.Stop(c)
+
+		// we do this to make sure we don't leave long-running queries left
+		// running in postgres when interrupted. postgres would eventually might
+		// realize the connection is closed, but that could take a long time,
+		// while the running operations could hold a lock stopping other quries
+		// in the future.
+		fmt.Println("Canceling...")
+		cancelFunc()
+		fmt.Println("Canceled.")
+
+		os.Exit(1)
+	}()
+
+	// check constraints on commit (not after each statement)
+	_, err = tx.Exec("set constraints all deferred")
+	utils.PanicOnErr(err)
+
+	urlIds := make([]int64, 0)
+
+	fmt.Println("Finding URLs...")
+	rows, err := tx.Query(`select id from urls where hostname=$1`, hostname)
+	utils.PanicOnErr(err)
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		err = rows.Scan(&id)
+		utils.PanicOnErr(err)
+		urlIds = append(urlIds, id)
+	}
+
+	links := []Link{}
+	outboundLinks := []Link{}
+	inboundLinks := []Link{}
+	internalLinks := []Link{}
+
+	fmt.Println("Finding links...")
+	rows, err = tx.Query(`select src_url_id, dst_url_id from links join urls on src_url_id=id where hostname=$1`, hostname)
+	utils.PanicOnErr(err)
+	defer rows.Close()
+	for rows.Next() {
+		var src, dst int64
+		err = rows.Scan(&src, &dst)
+		utils.PanicOnErr(err)
+		links = append(links, Link{src: src, dst: dst})
+	}
+	fmt.Println("Links so far:", len(links))
+
+	fmt.Println("Finding more links...")
+	rows, err = tx.Query(`select src_url_id, dst_url_id from links join urls on dst_url_id=id where hostname=$1`, hostname)
+	utils.PanicOnErr(err)
+	defer rows.Close()
+	for rows.Next() {
+		var src, dst int64
+		err = rows.Scan(&src, &dst)
+		utils.PanicOnErr(err)
+		links = append(links, Link{src: src, dst: dst})
+	}
+	fmt.Println("Total links:", len(links))
+
+	fmt.Println("Categorizing links...")
+	for _, link := range links {
+		if slices.Index(urlIds, link.src) >= 0 && slices.Index(urlIds, link.dst) >= 0 {
+			internalLinks = append(internalLinks, link)
+		} else if slices.Index(urlIds, link.src) >= 0 {
+			outboundLinks = append(outboundLinks, link)
+		} else {
+			inboundLinks = append(inboundLinks, link)
+		}
+	}
+
+	fmt.Println("Finding not-externally-linked URLs...")
+	var notExternallyLinkedUrlIds []int64
+	for _, id := range urlIds {
+		externallyLinked := false
+		for _, link := range inboundLinks {
+			if link.dst == id {
+				externallyLinked = true
+				break
+			}
+		}
+
+		if !externallyLinked {
+			notExternallyLinkedUrlIds = append(notExternallyLinkedUrlIds, id)
+		}
+	}
+
+	fmt.Printf("Deleting %d internal links...\n", len(internalLinks))
+	//
+	var srcs, dsts []int64
+	for _, link := range internalLinks {
+		srcs = append(srcs, link.src)
+		dsts = append(dsts, link.dst)
+	}
+	q := `
+delete from links
+where row(src_url_id, dst_url_id) in
+    (select unnest($1::bigint[]), unnest($2::bigint[]))
+`
+	result, err := tx.Exec(q, pq.Array(srcs), pq.Array(dsts))
+	utils.PanicOnErr(err)
+	affected, err := result.RowsAffected()
+	utils.PanicOnErr(err)
+	fmt.Println("Affected:", affected)
+
+	fmt.Printf("Deleting %d outbound links...\n", len(outboundLinks))
+	srcs, dsts = nil, nil
+	for _, link := range outboundLinks {
+		srcs = append(srcs, link.src)
+		dsts = append(dsts, link.dst)
+	}
+	result, err = tx.Exec(q, pq.Array(srcs), pq.Array(dsts))
+	utils.PanicOnErr(err)
+	affected, err = result.RowsAffected()
+	utils.PanicOnErr(err)
+	fmt.Println("Affected:", affected)
+
+	fmt.Printf("Deleting %d urls with no external links...\n", len(notExternallyLinkedUrlIds))
+	q = `delete from urls where id = any($1::bigint[])`
+	result, err = tx.Exec(q, pq.Array(notExternallyLinkedUrlIds))
+	utils.PanicOnErr(err)
+	affected, err = result.RowsAffected()
+	utils.PanicOnErr(err)
+	fmt.Println("Affected:", affected)
+
+	fmt.Println("Committing transaction...")
+	tx.Commit()
+
+	// make sure we won't try cancelling the transaction, now that we're done
+	tx = nil
+
+	fmt.Println("Done.")
 }
 
 func handleIndexCommand(cfg *config.Config, args []string) {
