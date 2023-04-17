@@ -14,8 +14,7 @@ var blacklistedDomains = map[string]bool{
 	"localhost":             true,
 	"127.0.0.1":             true,
 	"guardian.shit.cx":      true,
-	"mastogem.picasoft.net": true, // wants us to slow down (status code: 44)
-	"gmi.skyjake.fi":        true, // something wrong with the collected urls atm; temporary blacklist
+	"mastogem.picasoft.net": true,
 }
 
 var blacklistedPrefixes = []string{
