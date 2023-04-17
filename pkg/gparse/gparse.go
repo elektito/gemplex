@@ -270,15 +270,6 @@ func ParsePage(body []byte, base *url.URL, contentType string) (result Page, err
 	// detect text language
 	result.Lang = detectLang(result.Text)
 
-	// mark some known irc logs
-	if result.Kind == "" {
-		if base.Hostname() == "gemini.techrights.org" {
-			if strings.HasPrefix(base.Path, "/tr_text_version/irc-") || strings.HasPrefix(base.Path, "/irc-gmi/") {
-				result.Kind = "irc"
-			}
-		}
-	}
-
 	return
 }
 

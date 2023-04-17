@@ -15,6 +15,8 @@ var blacklistedDomains = map[string]bool{
 	"127.0.0.1":             true,
 	"guardian.shit.cx":      true,
 	"mastogem.picasoft.net": true,
+	"gemini.techrights.org": true,
+	"gemini.autonomy.earth": true,
 }
 
 var blacklistedPrefixes = []string{
