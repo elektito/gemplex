@@ -50,6 +50,7 @@ var (
 	spaceSeqRe       = regexp.MustCompile(`[ \t]{2,}`)
 	newlineSeqRe     = regexp.MustCompile(`(?m)\n{2,}`)
 	allWhitespaceRe  = regexp.MustCompile(`^\s+$`)
+	ansiSeqRe        = regexp.MustCompile("[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))") // from: https://github.com/acarl005/stripansi/blob/master/stripansi.go
 )
 
 func ParsePlain(text string) (result Page) {
@@ -240,10 +241,12 @@ func ParsePage(body []byte, base *url.URL, contentType string) (result Page, err
 	}
 
 	// cleanup the text a little
+	result.Text = ansiSeqRe.ReplaceAllLiteralString(result.Text, "")
 	result.Text = nonAlphanumSeqRe.ReplaceAllLiteralString(result.Text, " ")
 	result.Text = spaceSeqRe.ReplaceAllLiteralString(result.Text, " ")
 
 	hadEllipses := strings.HasSuffix(result.Title, "...")
+	result.Title = ansiSeqRe.ReplaceAllLiteralString(result.Title, "")
 	result.Title = nonAlphanumSeqRe.ReplaceAllLiteralString(result.Title, " ")
 	result.Title = spaceSeqRe.ReplaceAllLiteralString(result.Title, " ")
 	result.Title = strings.Trim(result.Title, " \t")
