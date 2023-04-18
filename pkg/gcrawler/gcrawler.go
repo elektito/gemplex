@@ -38,6 +38,13 @@ var blacklistedPrefixes = []string{
 	"gemini://geminispace.info/v/",
 	"gemini://gemini.bunburya.eu/remini/",
 	"gemini://gem.graypegg.com/hn/",
+
+	// the index pages allow the "offset" query argument to go higher and higher
+	// while the content wraps around to the beginning. what's worse, since the
+	// index is part of the page contents, it's actually slightly different each
+	// time. so we'll be crawling this site forever, adding almost-the-same
+	// content over and over again.
+	"gemini://gemlog.stargrave.org/?",
 }
 
 func IsBlacklisted(link string, parsedLink *url.URL) bool {
