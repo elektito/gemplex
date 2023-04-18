@@ -372,7 +372,9 @@ func updateDbTempError(db *sql.DB, r VisitResult) {
 	utils.PanicOnErr(err)
 }
 
-func flusher(c <-chan VisitResult, done chan bool) {
+func flusher(c <-chan VisitResult, done chan bool, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	db, err := sql.Open("postgres", Config.GetDbConnStr())
 	utils.PanicOnErr(err)
 	defer db.Close()
@@ -404,7 +406,6 @@ loop:
 		}
 	}
 
-	done <- true
 	log.Println("[crawl][flusher] Exited.")
 }
 
@@ -424,7 +425,9 @@ func isBanned(parsedLink *url.URL, robotsPrefixes []string) bool {
 	return false
 }
 
-func coordinator(nprocs int, visitorInputs []chan string, urlChan <-chan string, done chan bool) {
+func coordinator(nprocs int, visitorInputs []chan string, urlChan <-chan string, done chan bool, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	host2ip := map[string]string{}
 	seen := map[string]bool{}
 
@@ -476,7 +479,6 @@ loop:
 	}
 
 	log.Println("[crawl][coord] Exited.")
-	done <- true
 }
 
 func getDueUrls(c chan<- string, done chan bool) {
@@ -586,7 +588,9 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (pref
 	return
 }
 
-func seeder(output chan<- string, visitResults chan VisitResult, done chan bool) {
+func seeder(output chan<- string, visitResults chan VisitResult, done chan bool, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	client := gemini.NewClient()
 	robotsRules := map[string][]string{}
 	recentRobotsErrors := map[string]time.Time{}
@@ -663,11 +667,12 @@ loop:
 	}
 
 	getDueDone <- true
-	done <- true
 	log.Println("[crawl][seeder] Exited.")
 }
 
-func cleaner(done chan bool) {
+func cleaner(done chan bool, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	db, err := sql.Open("postgres", Config.GetDbConnStr())
 	utils.PanicOnErr(err)
 	defer db.Close()
@@ -707,7 +712,6 @@ where not exists (
 		}
 	}
 
-	done <- true
 	log.Println("[crawl][cleaner] Exited.")
 }
 
@@ -764,14 +768,16 @@ func crawl(done chan bool, wg *sync.WaitGroup) {
 	}
 
 	urlChan := make(chan string, 100000)
-	coordDone := make(chan bool)
-	seedDone := make(chan bool)
-	flushDone := make(chan bool)
-	cleanDone := make(chan bool)
-	go coordinator(nprocs, inputUrls, urlChan, coordDone)
-	go seeder(urlChan, visitResults, seedDone)
-	go flusher(visitResults, flushDone)
-	go cleaner(cleanDone)
+	coordDone := make(chan bool, 1)
+	seedDone := make(chan bool, 1)
+	flushDone := make(chan bool, 1)
+	cleanDone := make(chan bool, 1)
+	subWg := &sync.WaitGroup{}
+	go coordinator(nprocs, inputUrls, urlChan, coordDone, subWg)
+	go seeder(urlChan, visitResults, seedDone, subWg)
+	go flusher(visitResults, flushDone, subWg)
+	go cleaner(cleanDone, subWg)
+	subWg.Add(4)
 
 loop:
 	for {
@@ -799,13 +805,10 @@ loop:
 
 	log.Println("[crawl] Shutting down workers...")
 	seedDone <- true
-	<-seedDone
 	coordDone <- true
-	<-coordDone
 	flushDone <- true
-	<-flushDone
 	cleanDone <- true
-	<-cleanDone
+	subWg.Wait()
 
 	log.Println("[crawl] Closing channels...")
 	for _, c := range inputUrls {
