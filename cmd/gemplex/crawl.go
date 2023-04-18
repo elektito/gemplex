@@ -672,10 +672,19 @@ func cleaner(done chan bool) {
 	utils.PanicOnErr(err)
 	defer db.Close()
 
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	canceled := make(chan bool)
+	go func() {
+		<-done
+		log.Println("[crawl][cleaner] Shutting down...")
+		cancelFunc()
+		canceled <- true
+	}()
+
 loop:
 	for {
 		start := time.Now()
-		result, err := db.Exec(`
+		result, err := db.ExecContext(ctx, `
 delete from contents c
 where not exists (
     select 1 from urls where content_id=c.id)`)
@@ -693,7 +702,7 @@ where not exists (
 
 		select {
 		case <-time.After(15 * time.Minute):
-		case <-done:
+		case <-canceled:
 			break loop
 		}
 	}
