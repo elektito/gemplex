@@ -693,6 +693,9 @@ loop:
 delete from contents c
 where not exists (
     select 1 from urls where content_id=c.id)`)
+		if ctx.Err() == context.Canceled {
+			break
+		}
 		utils.PanicOnErr(err)
 		end := time.Now()
 		elapsed := end.Sub(start).Round(time.Millisecond)
