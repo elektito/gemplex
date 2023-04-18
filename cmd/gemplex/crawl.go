@@ -229,6 +229,7 @@ where url = $2
 func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	tx, err := db.Begin()
 	utils.PanicOnErr(err)
+	defer tx.Rollback()
 
 	ct, ctArgs := parseContentType(r.contentType)
 	contentHash := calcContentHash(r.contents)
@@ -248,7 +249,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 
 	// insert contents with a dummy update on conflict so that we can
 	// get the id even in case of already existing data.
-	err = db.QueryRow(
+	err = tx.QueryRow(
 		`insert into contents
 			    (hash, content, content_text, lang, kind, content_type, content_type_args, title, fetch_time)
                 values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -264,7 +265,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	}
 
 	var urlId int64
-	err = db.QueryRow(
+	err = tx.QueryRow(
 		`update urls set
                  last_visited = now(),
                  content_id = $1,
@@ -285,7 +286,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	}
 
 	// remove all existing links for this url
-	_, err = db.Exec(`delete from links where src_url_id = $1`, urlId)
+	_, err = tx.Exec(`delete from links where src_url_id = $1`, urlId)
 	if err != nil {
 		log.Println("[crawl] Database error when deleting existing links for url:", r.url)
 		panic(err)
@@ -297,7 +298,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 			continue
 		}
 		var destUrlId int64
-		err = db.QueryRow(
+		err = tx.QueryRow(
 			`insert into urls (url, hostname, first_added) values ($1, $2, now())
                      on conflict (url) do update set url = excluded.url
                      returning id`,
@@ -308,7 +309,7 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 		}
 		utils.PanicOnErr(err)
 
-		_, err = db.Exec(
+		_, err = tx.Exec(
 			`insert into links values ($1, $2, $3)
                      on conflict do nothing`,
 			urlId, destUrlId, link.Text)

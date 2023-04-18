@@ -140,6 +140,8 @@ func handleDelHostCommand(cfg *config.Config, args []string) {
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	tx, err := db.BeginTx(ctx, nil)
+	utils.PanicOnErr(err)
+	defer tx.Rollback()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
