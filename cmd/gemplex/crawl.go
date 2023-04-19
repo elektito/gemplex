@@ -330,20 +330,17 @@ func updateDbSlowDownError(db *sql.DB, r VisitResult) {
 		return
 	}
 
-	intervalInt, err := strconv.Atoi(r.meta)
+	intervalSeconds, err := strconv.Atoi(r.meta)
 	if err != nil {
 		return
 	}
 
-	interval := time.Duration(intervalInt) * time.Second
-	hostname := uparsed.Host
-
 	q := `
 update hosts
-set slowdown_until = now() + $1
+set slowdown_until = now() + make_interval(secs => $1)
 where hostname = $2
 `
-	_, err = db.Exec(q, interval, hostname)
+	_, err = Db.Exec(q, intervalSeconds, uparsed.Host)
 	utils.PanicOnErr(err)
 }
 
