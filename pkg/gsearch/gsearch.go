@@ -23,13 +23,15 @@ import (
 const PageSize = 15
 
 type Doc struct {
-	Title    string
-	Content  string
-	Lang     string
-	Links    string
-	PageRank float64
-	HostRank float64
-	Kind     string
+	Title       string
+	Content     string
+	Lang        string
+	Links       string
+	PageRank    float64
+	HostRank    float64
+	Kind        string
+	ContentType string
+	ContentSize uint64
 }
 
 type RankedSort struct {
@@ -46,12 +48,14 @@ type SearchRequest struct {
 }
 
 type SearchResult struct {
-	Url       string  `json:"url"`
-	Title     string  `json:"title"`
-	Snippet   string  `json:"snippet"`
-	UrlRank   float64 `json:"prank"`
-	HostRank  float64 `json:"hrank"`
-	Relevance float64 `json:"score"`
+	Url         string  `json:"url"`
+	Title       string  `json:"title"`
+	Snippet     string  `json:"snippet"`
+	UrlRank     float64 `json:"prank"`
+	HostRank    float64 `json:"hrank"`
+	Relevance   float64 `json:"score"`
+	ContentType string  `json:"content_type"`
+	ContentSize uint64  `json:"content_size"`
 
 	// used by templates; this is _not_ set by the Search function.
 	Hostname string `json:"-"`
@@ -168,6 +172,18 @@ func NewIndex(path string, name string) (idx bleve.Index, err error) {
 	kindFieldMapping.IncludeTermVectors = false
 	docMapping.AddFieldMappingsAt("Kind", kindFieldMapping)
 
+	contentTypeFieldMapping := bleve.NewKeywordFieldMapping()
+	contentTypeFieldMapping.Index = true
+	contentTypeFieldMapping.IncludeInAll = false
+	contentTypeFieldMapping.IncludeTermVectors = false
+	docMapping.AddFieldMappingsAt("ContentType", contentTypeFieldMapping)
+
+	contentSizeFieldMapping := bleve.NewNumericFieldMapping()
+	contentSizeFieldMapping.Index = true
+	contentSizeFieldMapping.IncludeInAll = false
+	contentSizeFieldMapping.IncludeTermVectors = false
+	docMapping.AddFieldMappingsAt("ContentSize", contentSizeFieldMapping)
+
 	idxMapping.AddDocumentMapping("Page", docMapping)
 
 	idx, err = bleve.New(path, idxMapping)
@@ -201,7 +217,7 @@ with x as
     (select dst_url_id uid, array_agg(text) links
      from links
      group by dst_url_id)
-select u.url, c.title, c.content_text, c.lang, c.kind, x.links, u.rank, h.rank
+select u.url, c.title, c.content_text, length(c.content), c.content_type, c.lang, c.kind, x.links, u.rank, h.rank
 from x
 join urls u on u.id = uid
 join contents c on c.id = u.content_id
@@ -224,7 +240,7 @@ loop:
 		var urlStr string
 		var lang sql.NullString
 		var kind sql.NullString
-		err = rows.Scan(&urlStr, &doc.Title, &doc.Content, &lang, &kind, &links, &doc.PageRank, &doc.HostRank)
+		err = rows.Scan(&urlStr, &doc.Title, &doc.Content, &doc.ContentSize, &doc.ContentType, &lang, &kind, &links, &doc.PageRank, &doc.HostRank)
 		if err != nil {
 			return
 		}
@@ -319,7 +335,7 @@ func Search(req SearchRequest, idx bleve.Index) (resp SearchResponse, err error)
 
 	s := bleve.NewSearchRequest(q)
 	s.Highlight = bleve.NewHighlightWithStyle(highlightStyle)
-	s.Fields = []string{"Title", "Content", "PageRank", "HostRank"}
+	s.Fields = []string{"Title", "Content", "PageRank", "HostRank", "ContentType", "ContentSize"}
 
 	langFacet := bleve.NewFacetRequest("Lang", 3)
 	s.AddFacet("lang", langFacet)
@@ -351,12 +367,14 @@ func Search(req SearchRequest, idx bleve.Index) (resp SearchResponse, err error)
 		snippet = " " + strings.Replace(snippet, "\n", " ", -1)
 
 		result := SearchResult{
-			Url:       r.ID,
-			Title:     r.Fields["Title"].(string),
-			Snippet:   snippet,
-			UrlRank:   r.Fields["PageRank"].(float64),
-			HostRank:  r.Fields["HostRank"].(float64),
-			Relevance: r.Score,
+			Url:         r.ID,
+			Title:       r.Fields["Title"].(string),
+			Snippet:     snippet,
+			UrlRank:     r.Fields["PageRank"].(float64),
+			HostRank:    r.Fields["HostRank"].(float64),
+			Relevance:   r.Score,
+			ContentType: r.Fields["ContentType"].(string),
+			ContentSize: uint64(r.Fields["ContentSize"].(float64)),
 		}
 		resp.Results = append(resp.Results, result)
 	}

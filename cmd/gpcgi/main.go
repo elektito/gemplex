@@ -17,6 +17,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/elektito/gemplex/pkg/config"
 	"github.com/elektito/gemplex/pkg/gsearch"
 	"github.com/elektito/gemplex/pkg/utils"
@@ -145,7 +146,8 @@ func renderResults(resp gsearch.SearchResponse, req gsearch.SearchRequest) []byt
 
 	t := `
 {{- define "SingleResult" }}
-=> {{ .Url }} {{ if .Title }} {{- .Title }} {{- else }} [Untitled] {{- end }} {{ if .Hostname }} ({{ .Hostname }}) {{ end }}
+=> {{ .Url }} {{ if .Title }} {{- .Title }} {{- else }} [Untitled] {{- end }}
+* {{ .Hostname }} - {{ .ContentType }} - {{ human .ContentSize }}
 {{- if verbose }}
 * hrank: {{ .HostRank }}
 * urank: {{ .UrlRank }}
@@ -185,6 +187,7 @@ Found {{ .TotalResults }} result(s) in {{ .Duration }}.
 		"inc":     func(n int) int { return n + 1 },
 		"dec":     func(n int) int { return n - 1 },
 		"verbose": func() bool { return req.Verbose },
+		"human":   func(n uint64) string { return humanize.Bytes(n) },
 	}
 
 	baseUrl := ""
@@ -200,10 +203,10 @@ Found {{ .TotalResults }} result(s) in {{ .Duration }}.
 	// fill in the Hostname field, since this is not ordinarily set by the
 	// Search function (because we can always parse the url for reading the
 	// hostname, but the templates are too dumb for that!)
-	for _, r := range resp.Results {
+	for i, r := range resp.Results {
 		u, err := url.Parse(r.Url)
 		if err == nil {
-			r.Hostname = u.Hostname()
+			resp.Results[i].Hostname = u.Hostname()
 		}
 	}
 

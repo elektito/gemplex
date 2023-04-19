@@ -44,6 +44,8 @@ github.com/blevesearch/zapx/v15 v15.3.9 h1:/s9zqKxFaZKQTTcMO2b/Tup0ch5MSztlvw+fr
 github.com/blevesearch/zapx/v15 v15.3.9/go.mod h1:m7Y6m8soYUvS7MjN9eKlz1xrLCcmqfFadmu7GhWIrLY=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
+github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/elektito/whatlanggo v1.1.1-elektito h1:fh+/6WOKDhXbSCyVizpkI3MeSTl0ItSRHgjWiHIShIk=
 github.com/elektito/whatlanggo v1.1.1-elektito/go.mod h1:y7KfCZxYm/aiEb5LIykiNdHQi9fWU4FitX1QBSlJPmE=
 github.com/golang/geo v0.0.0-20210211234256-740aa86cb551 h1:gtexQ/VGyN+VVFRXSFiguSNcXmS6rkKT+X7FdIrTtfo=

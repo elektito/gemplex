@@ -7,6 +7,7 @@ require (
 	github.com/PuerkitoBio/purell v1.1.1
 	github.com/a-h/gemini v0.0.66
 	github.com/blevesearch/bleve/v2 v2.3.7
+	github.com/dustin/go-humanize v1.0.1
 	github.com/elektito/whatlanggo v1.1.1-elektito
 	github.com/lib/pq v1.10.7
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
