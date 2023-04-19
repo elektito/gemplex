@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
@@ -32,7 +33,7 @@ const (
 	maxRevisitTime               = "1 month"
 	maxRedirects                 = 5
 	crawlerUserAgent             = "elektito/gemplex"
-	robotsErrorWaitTime          = 1 * time.Hour
+	robotsTxtValidity            = "1 day"
 )
 
 type VisitResult struct {
@@ -45,16 +46,30 @@ type VisitResult struct {
 	contentType string
 	visitTime   time.Time
 	banned      bool
+
+	// set when this was a host-level visit (like robots.txt) and urls table
+	// should not be updated.
+	isHostVisit bool
 }
 
-// error type used to say there was an error fetching robots.txt
-type RecentRobotsError struct{}
-
-func (e RecentRobotsError) Error() string {
-	return "Recent robots.txt error"
+type GeminiSlowdownError struct {
+	Meta string
 }
 
-var _ error = (*RecentRobotsError)(nil)
+func (e *GeminiSlowdownError) Error() string {
+	return fmt.Sprintf("Slow down: %s seconds", e.Meta)
+}
+
+func errGeminiSlowdown(meta string) *GeminiSlowdownError {
+	return &GeminiSlowdownError{
+		Meta: meta,
+	}
+}
+
+var _ error = (*GeminiSlowdownError)(nil)
+
+var ErrRobotsBackoff = fmt.Errorf("Backing off from fetching robots.txt")
+var Db *sql.DB
 
 func readGemini(ctx context.Context, client *gemini.Client, u *url.URL, visitorId string) (body []byte, code int, meta string, finalUrl *url.URL, err error) {
 	redirs := 0
@@ -63,8 +78,8 @@ redirect:
 	resp, certs, auth, ok, err := client.RequestURL(ctx, u)
 	if err != nil {
 		log.Printf(
-			"[crawl][%s] Request error: ok=%t auth=%t certs=%d err=%s\n",
-			visitorId, ok, auth, len(certs), err)
+			"[crawl][%s] Request error for %s: ok=%t auth=%t certs=%d err=%s\n",
+			visitorId, u, ok, auth, len(certs), err)
 		return
 	}
 
@@ -86,8 +101,8 @@ redirect:
 	resp, certs, auth, ok, err = client.RequestURL(ctx, u)
 	if err != nil {
 		log.Printf(
-			"[crawl][%s] Request error: ok=%t auth=%t certs=%d err=%s\n",
-			visitorId, ok, auth, len(certs), err)
+			"[crawl][%s] Request error for %s: ok=%t auth=%t certs=%d err=%s\n",
+			visitorId, u, ok, auth, len(certs), err)
 		return
 	}
 
@@ -216,18 +231,18 @@ func calcContentHash(contents []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func updateDbBanned(db *sql.DB, r VisitResult) {
+func updateDbBanned(r VisitResult) {
 	q := `
 update urls
 set banned = $1
 where url = $2
 `
-	_, err := db.Exec(q, r.banned, r.url)
+	_, err := Db.Exec(q, r.banned, r.url)
 	utils.PanicOnErr(err)
 }
 
-func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
-	tx, err := db.Begin()
+func updateDbSuccessfulVisit(r VisitResult) {
+	tx, err := Db.Begin()
 	utils.PanicOnErr(err)
 	defer tx.Rollback()
 
@@ -320,9 +335,13 @@ func updateDbSuccessfulVisit(db *sql.DB, r VisitResult) {
 	utils.PanicOnErr(err)
 }
 
-func updateDbSlowDownError(db *sql.DB, r VisitResult) {
-	// do whatever we do for temporary errors first
-	updateDbTempError(db, r)
+func updateDbSlowDownError(r VisitResult) {
+	// if it's not a host-level visit (like robots.txt which is for an entire
+	// host, not just a single url)...
+	if !r.isHostVisit {
+		// do whatever we do for temporary errors first
+		updateDbTempError(r)
+	}
 
 	// then also mark the hostname for slowdown
 	uparsed, err := url.Parse(r.url)
@@ -344,8 +363,8 @@ where hostname = $2
 	utils.PanicOnErr(err)
 }
 
-func updateDbPermanentError(db *sql.DB, r VisitResult) {
-	_, err := db.Exec(
+func updateDbPermanentError(r VisitResult) {
+	_, err := Db.Exec(
 		`update urls set
                  last_visited = now(),
                  error = $1,
@@ -356,9 +375,9 @@ func updateDbPermanentError(db *sql.DB, r VisitResult) {
 	utils.PanicOnErr(err)
 }
 
-func updateDbTempError(db *sql.DB, r VisitResult) {
+func updateDbTempError(r VisitResult) {
 	// exponential retry
-	_, err := db.Exec(
+	_, err := Db.Exec(
 		`update urls set
                  last_visited = now(),
                  error = $1,
@@ -372,10 +391,6 @@ func updateDbTempError(db *sql.DB, r VisitResult) {
 func flusher(c <-chan VisitResult, done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	db, err := sql.Open("postgres", Config.GetDbConnStr())
-	utils.PanicOnErr(err)
-	defer db.Close()
-
 loop:
 	for {
 		select {
@@ -384,19 +399,19 @@ loop:
 			// the error check in this clause is in case there was a
 			// parsing/encoding error after the page was successfully fetched.
 			case r.statusCode/10 == 2 && r.error == nil:
-				updateDbSuccessfulVisit(db, r)
+				updateDbSuccessfulVisit(r)
 			case r.statusCode == 44: // SLOW DOWN
-				updateDbSlowDownError(db, r)
+				updateDbSlowDownError(r)
 			case r.statusCode/10 == 5: // TEMPORARY ERROR
 				fallthrough
 			case r.statusCode/10 == 1: // REQUIRES INPUT
 				// for our purposes we'll consider requiring input the same as
 				// permanent errors. we'll retry it, but a long time later.
-				updateDbPermanentError(db, r)
+				updateDbPermanentError(r)
 			case r.banned:
-				updateDbBanned(db, r)
+				updateDbBanned(r)
 			default:
-				updateDbTempError(db, r)
+				updateDbTempError(r)
 			}
 		case <-done:
 			break loop
@@ -479,13 +494,9 @@ loop:
 }
 
 func getDueUrls(c chan<- string, done chan bool) {
-	db, err := sql.Open("postgres", Config.GetDbConnStr())
-	utils.PanicOnErr(err)
-	defer db.Close()
-
-	rows, err := db.Query(`
+	rows, err := Db.Query(`
 select url from urls u
-join hosts h on u.hostname = h.hostname
+left join hosts h on u.hostname = h.hostname
 where not banned and (h.slowdown_until is null or h.slowdown_until < now()) and
    (last_visited is null or
     (status_code / 10 = 4 and last_visited + retry_time < now()) or
@@ -516,18 +527,26 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (pref
 		return
 	}
 
-	body, code, _, _, err := readGemini(context.Background(), client, robotsUrl, visitorId)
+	body, code, meta, finalUrl, err := readGemini(context.Background(), client, robotsUrl, visitorId)
 	if err != nil {
+		return
+	}
+
+	if code == 44 {
+		err = errGeminiSlowdown(meta)
 		return
 	}
 
 	if code/10 == 5 {
 		// no such file; return an empty list
 		return
-	}
-
-	if code/10 != 2 {
-		err = fmt.Errorf("Cannot read robots.txt for hostname %s: got code %d", u.Host, code)
+	} else if code/10 != 2 {
+		// we'll still treat it as an empty list, but we'll log something about
+		// it
+		log.Printf("Cannot read robots.txt for hostname %s: got code %d. Treating it as no robots.txt.", u.Host, code)
+		return
+	} else if finalUrl.String() != robotsUrl.String() {
+		log.Printf("robots.txt redirected from %s to %s; treating it as no robots.txt.", robotsUrl.String(), finalUrl.String())
 		return
 	}
 
@@ -585,33 +604,157 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (pref
 	return
 }
 
+func getRobotsPrefixesFromDb(u *url.URL) (prefixes []string, validUntil time.Time, err error) {
+	var prefixesStr sql.NullString
+	var nextTryTime sql.NullTime
+	var validUntilNullable sql.NullTime
+	q := `
+select
+    robots_prefixes, robots_valid_until, robots_last_visited + robots_retry_time
+from hosts
+where hostname = $1`
+	row := Db.QueryRow(q, u.Host)
+	err = row.Scan(&prefixesStr, &validUntilNullable, &nextTryTime)
+	if err == sql.ErrNoRows {
+		return
+	}
+	utils.PanicOnErr(err)
+
+	if !prefixesStr.Valid {
+		err = fmt.Errorf("No prefixes available")
+		return
+	}
+
+	if nextTryTime.Time.After(time.Now()) {
+		err = ErrRobotsBackoff
+		return
+	}
+
+	prefixes = strings.Split(prefixesStr.String, "\n")
+
+	return
+}
+
+func updateRobotsRulesInDbWithError(u *url.URL, permanentError bool) {
+	var err error
+	if permanentError {
+		q := `
+insert into hosts
+    (hostname, robots_last_visited, robots_retry_time, slowdown_until)
+values
+    ($1, now(), $2, now() + $2)
+on conflict (hostname) do update
+set robots_prefixes = null,
+    robots_last_visited = now(),
+    robots_retry_time = case when excluded.robots_retry_time is null
+                        then $2
+                        else greatest(excluded.robots_retry_time, $2) end`
+		_, err = Db.Exec(q, u.Host, permanentErrorRetry)
+	} else {
+		q := `
+insert into hosts
+    (hostname, robots_last_visited, robots_retry_time, slowdown_until)
+values
+    ($1, now(), $2, now() + $2)
+on conflict (hostname) do update
+set robots_prefixes = null,
+    robots_last_visited = now(),
+    robots_retry_time = case when excluded.robots_retry_time is null
+                        then $2
+                        else least(excluded.robots_retry_time * 2, $3) end,
+    slowdown_until = now() + (case when excluded.robots_retry_time is null
+                              then $2
+                              else least(excluded.robots_retry_time * 2, $3) end)`
+		_, err = Db.Exec(q, u.Host, tempErrorMinRetry, maxRevisitTime)
+	}
+
+	utils.PanicOnErr(err)
+}
+
+func updateRobotsRulesInDbWithSuccess(u *url.URL, prefixes []string) {
+	prefixesStr := strings.Join(prefixes, "\n")
+	q := `
+insert into hosts
+    (hostname, robots_prefixes, robots_valid_until, robots_last_visited, robots_retry_time)
+values
+    ($3, $1, now() + $2, now(), null)
+on conflict (hostname) do update set
+    robots_prefixes = $1,
+    robots_valid_until = now() + $2,
+    robots_last_visited = now(),
+    robots_retry_time = null
+`
+	_, err := Db.Exec(q, prefixesStr, robotsTxtValidity, u.Host)
+	utils.PanicOnErr(err)
+}
+
+func isPermanentNetworkError(err error) bool {
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) {
+		return false
+	}
+
+	if strings.Contains(err.Error(), "no such host") {
+		return true
+	}
+
+	if strings.Contains(err.Error(), "no route to host") {
+		return true
+	}
+
+	return false
+}
+
 func seeder(output chan<- string, visitResults chan VisitResult, done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	client := gemini.NewClient()
-	robotsRules := map[string][]string{}
-	recentRobotsErrors := map[string]time.Time{}
+	type RobotsRecord struct {
+		prefixes   []string
+		validUntil time.Time
+		err        error
+	}
+	robotsCache := map[string]RobotsRecord{}
 	getOrFetchRobotsPrefixes := func(u *url.URL) (results []string, err error) {
-		timestamp, ok := recentRobotsErrors[u.Host]
-		if ok {
-			wait := time.Now().Sub(timestamp)
-			if wait > robotsErrorWaitTime {
-				delete(recentRobotsErrors, u.Host)
-			} else {
-				err = &RecentRobotsError{}
-				return
-			}
+		hit, ok := robotsCache[u.Host]
+		if ok && hit.validUntil.Before(time.Now()) {
+			results = hit.prefixes
+			err = hit.err
+			return
+		} else if ok {
+			delete(robotsCache, u.Host)
 		}
 
-		results, ok = robotsRules[u.Host]
-		if !ok {
-			results, err = fetchRobotsRules(u, client, "seeder")
-			if err != nil {
-				recentRobotsErrors[u.Host] = time.Now()
-				return
+		results, validUntil, err := getRobotsPrefixesFromDb(u)
+		if err == nil {
+			robotsCache[u.Host] = RobotsRecord{
+				prefixes:   results,
+				validUntil: validUntil,
 			}
-			robotsRules[u.Host] = results
+			return
+		} else if err == ErrRobotsBackoff {
+			return
 		}
+		err = nil
+
+		results, err = fetchRobotsRules(u, client, "seeder")
+		var slowdownErr *GeminiSlowdownError
+		if errors.As(err, &slowdownErr) {
+			updateDbSlowDownError(VisitResult{
+				url:         u.String(),
+				meta:        slowdownErr.Meta,
+				isHostVisit: true,
+			})
+			err = ErrRobotsBackoff
+			return
+		} else if err != nil {
+			isPermanent := isPermanentNetworkError(err)
+			updateRobotsRulesInDbWithError(u, isPermanent)
+			err = ErrRobotsBackoff
+			return
+		}
+
+		updateRobotsRulesInDbWithSuccess(u, results)
 		return
 	}
 
@@ -632,7 +775,7 @@ loop:
 
 			robotsPrefixes, err := getOrFetchRobotsPrefixes(urlParsed)
 			if err != nil {
-				if _, ok := err.(*RecentRobotsError); ok {
+				if err == ErrRobotsBackoff {
 					// don't report these so logs aren't spammed
 				} else {
 					log.Printf("[crawl][seeder] Cannot read robots.txt for url %s: %s\n", urlString, err)
@@ -670,10 +813,6 @@ loop:
 func cleaner(done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	db, err := sql.Open("postgres", Config.GetDbConnStr())
-	utils.PanicOnErr(err)
-	defer db.Close()
-
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	canceled := make(chan bool)
 	go func() {
@@ -686,7 +825,7 @@ func cleaner(done chan bool, wg *sync.WaitGroup) {
 loop:
 	for {
 		start := time.Now()
-		result, err := db.ExecContext(ctx, `
+		result, err := Db.ExecContext(ctx, `
 delete from contents c
 where not exists (
     select 1 from urls where content_id=c.id)`)
@@ -751,6 +890,13 @@ func dumpCrawlerState(filename string, nprocs int, urls [][]string) {
 
 func crawl(done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
+
+	// open (and check) database for all workers to use
+	var err error
+	Db, err = sql.Open("postgres", Config.GetDbConnStr())
+	utils.PanicOnErr(err)
+	err = Db.Ping()
+	utils.PanicOnErr(err)
 
 	nprocs := 500
 
