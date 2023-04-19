@@ -646,9 +646,8 @@ values
 on conflict (hostname) do update
 set robots_prefixes = null,
     robots_last_visited = now(),
-    robots_retry_time = case when excluded.robots_retry_time is null
-                        then $2
-                        else greatest(excluded.robots_retry_time, $2) end`
+    robots_retry_time = $2,
+    slowdown_until = now() + $2`
 		_, err = Db.Exec(q, u.Host, permanentErrorRetry)
 	} else {
 		q := `
