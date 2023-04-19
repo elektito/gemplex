@@ -162,6 +162,13 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 				Text: matches[2],
 			}
 
+			// a quick hacky fix for a mistake I've seen in some capsules.
+			// clients usually handle //foo to mean the same thing as /foo, so
+			// we do that too.
+			if strings.HasPrefix(link.Url, "//") {
+				link.Url = link.Url[1:]
+			}
+
 			u, err := url.Parse(link.Url)
 			if err != nil {
 				continue
