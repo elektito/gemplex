@@ -12,8 +12,8 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/elektito/gemplex/pkg/config"
-	"github.com/elektito/gemplex/pkg/gcrawler"
+	"git.sr.ht/~elektito/gemplex/pkg/config"
+	"git.sr.ht/~elektito/gemplex/pkg/gcrawler"
 )
 
 var Config *config.Config

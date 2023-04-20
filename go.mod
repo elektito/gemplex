@@ -1,4 +1,4 @@
-module github.com/elektito/gemplex
+module git.sr.ht/~elektito/gemplex
 
 go 1.20
 

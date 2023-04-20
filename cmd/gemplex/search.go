@@ -9,8 +9,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/elektito/gemplex/pkg/gsearch"
-	"github.com/elektito/gemplex/pkg/utils"
+	"git.sr.ht/~elektito/gemplex/pkg/gsearch"
+	"git.sr.ht/~elektito/gemplex/pkg/utils"
 )
 
 func search(done chan bool, wg *sync.WaitGroup) {

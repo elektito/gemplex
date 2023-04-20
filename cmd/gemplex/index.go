@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
-	"github.com/elektito/gemplex/pkg/gsearch"
-	"github.com/elektito/gemplex/pkg/utils"
+	"git.sr.ht/~elektito/gemplex/pkg/gsearch"
+	"git.sr.ht/~elektito/gemplex/pkg/utils"
 )
 
 // used to make sure loadInitialIndex, which is called by both search and index

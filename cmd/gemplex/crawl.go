@@ -20,9 +20,9 @@ import (
 	"time"
 
 	"github.com/a-h/gemini"
-	"github.com/elektito/gemplex/pkg/gcrawler"
-	"github.com/elektito/gemplex/pkg/gparse"
-	"github.com/elektito/gemplex/pkg/utils"
+	"git.sr.ht/~elektito/gemplex/pkg/gcrawler"
+	"git.sr.ht/~elektito/gemplex/pkg/gparse"
+	"git.sr.ht/~elektito/gemplex/pkg/utils"
 )
 
 const (

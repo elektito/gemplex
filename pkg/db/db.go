@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"net/url"
 
-	"github.com/elektito/gemplex/pkg/gparse"
+	"git.sr.ht/~elektito/gemplex/pkg/gparse"
 )
 
 type UrlInfo struct {

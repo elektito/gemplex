@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/elektito/gemplex/pkg/config"
-	"github.com/elektito/gemplex/pkg/gsearch"
-	"github.com/elektito/gemplex/pkg/utils"
+	"git.sr.ht/~elektito/gemplex/pkg/config"
+	"git.sr.ht/~elektito/gemplex/pkg/gsearch"
+	"git.sr.ht/~elektito/gemplex/pkg/utils"
 )
 
 type Params struct {

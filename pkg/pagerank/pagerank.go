@@ -5,7 +5,7 @@ import (
 	"log"
 	"math"
 
-	"github.com/elektito/gemplex/pkg/utils"
+	"git.sr.ht/~elektito/gemplex/pkg/utils"
 	"github.com/lib/pq"
 )
 

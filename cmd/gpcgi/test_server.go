@@ -15,8 +15,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/elektito/gemplex/pkg/config"
-	"github.com/elektito/gemplex/pkg/utils"
+	"git.sr.ht/~elektito/gemplex/pkg/config"
+	"git.sr.ht/~elektito/gemplex/pkg/utils"
 )
 
 func pubKey(priv interface{}) interface{} {

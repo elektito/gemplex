@@ -12,12 +12,12 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/elektito/gemplex/pkg/config"
-	"github.com/elektito/gemplex/pkg/db"
-	"github.com/elektito/gemplex/pkg/gparse"
-	"github.com/elektito/gemplex/pkg/gsearch"
-	"github.com/elektito/gemplex/pkg/pagerank"
-	"github.com/elektito/gemplex/pkg/utils"
+	"git.sr.ht/~elektito/gemplex/pkg/config"
+	"git.sr.ht/~elektito/gemplex/pkg/db"
+	"git.sr.ht/~elektito/gemplex/pkg/gparse"
+	"git.sr.ht/~elektito/gemplex/pkg/gsearch"
+	"git.sr.ht/~elektito/gemplex/pkg/pagerank"
+	"git.sr.ht/~elektito/gemplex/pkg/utils"
 	"github.com/lib/pq"
 	"golang.org/x/exp/slices"
 )
