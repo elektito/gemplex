@@ -158,15 +158,23 @@ redirect:
 	return
 }
 
-func visitor(visitorId string, urls <-chan string, results chan<- VisitResult) {
-	ctx := context.Background()
+func visitor(visitorId string, urls <-chan string, results chan<- VisitResult, done <-chan bool) {
 	client := gemini.NewClient()
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
+	go func() {
+		<-done
+		cancelFunc()
+	}()
 
 	for urlStr := range urls {
 		log.Printf("[crawl][%s] Processing: %s\n", visitorId, urlStr)
 		u, _ := url.Parse(urlStr)
 
 		body, code, meta, u, err := readGemini(ctx, client, u, visitorId)
+		if errors.Is(err, context.Canceled) {
+			break
+		}
 		if err != nil {
 			log.Printf("[crawl][%s] Error: %s url=%s\n", visitorId, err, urlStr)
 			results <- VisitResult{
@@ -902,14 +910,16 @@ func crawl(done chan bool, wg *sync.WaitGroup) {
 	// create an array of channel, which will each serve as the input to each
 	// processor.
 	inputUrls := make([]chan string, nprocs)
+	visitorDone := make([]chan bool, nprocs)
 	for i := 0; i < nprocs; i++ {
 		inputUrls[i] = make(chan string, 1000)
+		visitorDone[i] = make(chan bool)
 	}
 
 	visitResults := make(chan VisitResult, 10000)
 
 	for i := 0; i < nprocs; i += 1 {
-		go visitor(strconv.Itoa(i), inputUrls[i], visitResults)
+		go visitor(strconv.Itoa(i), inputUrls[i], visitResults, visitorDone[i])
 	}
 
 	urlChan := make(chan string, 100000)
@@ -963,8 +973,9 @@ loop:
 	subWg.Wait()
 
 	log.Println("[crawl] Closing channels...")
-	for _, c := range inputUrls {
+	for i, c := range inputUrls {
 		close(c)
+		visitorDone[i] <- true
 	}
 
 	log.Println("[crawl] Draining channels...")
