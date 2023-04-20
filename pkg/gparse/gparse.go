@@ -12,8 +12,8 @@ import (
 	"strings"
 	"unicode"
 
+	"git.sr.ht/~elektito/whatlanggo"
 	"github.com/PuerkitoBio/purell"
-	"github.com/elektito/whatlanggo"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/transform"
 )

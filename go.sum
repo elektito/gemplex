@@ -1,3 +1,5 @@
+git.sr.ht/~elektito/whatlanggo v1.1.1-elektito2 h1:vxlE3P+6EbC8y54wtPL9Vze7bnPXqvKSftYrpSHdD6o=
+git.sr.ht/~elektito/whatlanggo v1.1.1-elektito2/go.mod h1:XzzjVaBdBhHKilS6qjNsWx8PTQ0pB/Xt4BgD/XpSjkE=
 github.com/BurntSushi/toml v1.2.1 h1:9F2/+DoOYIOksmaJFPw1tGFy1eDnIJXg+UHjuD8lTak=
 github.com/BurntSushi/toml v1.2.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/PuerkitoBio/purell v1.1.1 h1:WEQqlqaGbrPkxLJWfBwQmfEAE1Z7ONdDLqrN38tNFfI=
@@ -46,8 +48,6 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
-github.com/elektito/whatlanggo v1.1.1-elektito h1:fh+/6WOKDhXbSCyVizpkI3MeSTl0ItSRHgjWiHIShIk=
-github.com/elektito/whatlanggo v1.1.1-elektito/go.mod h1:y7KfCZxYm/aiEb5LIykiNdHQi9fWU4FitX1QBSlJPmE=
 github.com/golang/geo v0.0.0-20210211234256-740aa86cb551 h1:gtexQ/VGyN+VVFRXSFiguSNcXmS6rkKT+X7FdIrTtfo=
 github.com/golang/geo v0.0.0-20210211234256-740aa86cb551/go.mod h1:QZ0nwyI2jOfgRAoBvP+ab5aRr7c9x7lhGEJrKvBwjWI=
 github.com/golang/protobuf v1.3.2 h1:6nsPYzhq5kReh6QImI3k5qWzO4PEbvbIW2cwSfR/6xs=
