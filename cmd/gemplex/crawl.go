@@ -924,27 +924,34 @@ func crawl(done chan bool, wg *sync.WaitGroup) {
 	go cleaner(cleanDone, subWg)
 	subWg.Add(4)
 
+	// i'd use math.MaxInt, but that causes time.After to wrap around it seems!
+	logPeriod := 1000 * time.Hour
+	if Config.Crawl.QueueStatusLogPeriod > 0 {
+		logPeriod = time.Duration(Config.Crawl.QueueStatusLogPeriod) * time.Second
+	}
 loop:
 	for {
-		nLinks := 0
-		sizeGroups := map[int]int{}
-		for _, channel := range inputUrls {
-			size := len(channel)
-			nLinks += size
+		if Config.Crawl.QueueStatusLogPeriod > 0 {
+			nLinks := 0
+			sizeGroups := map[int]int{}
+			for _, channel := range inputUrls {
+				size := len(channel)
+				nLinks += size
 
-			if _, ok := sizeGroups[size]; ok {
-				sizeGroups[size] += 1
-			} else {
-				sizeGroups[size] = 1
+				if _, ok := sizeGroups[size]; ok {
+					sizeGroups[size] += 1
+				} else {
+					sizeGroups[size] = 1
+				}
 			}
+			log.Println("[crawl] Links in queue: ", nLinks, " outputQueue: ", len(visitResults))
+			logSizeGroups(sizeGroups)
 		}
-		log.Println("[crawl] Links in queue: ", nLinks, " outputQueue: ", len(visitResults))
-		logSizeGroups(sizeGroups)
 
 		select {
 		case <-done:
 			break loop
-		case <-time.After(1 * time.Second):
+		case <-time.After(logPeriod):
 		}
 	}
 

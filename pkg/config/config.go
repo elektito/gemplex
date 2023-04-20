@@ -33,6 +33,12 @@ type Config struct {
 		UnixSocketPath string
 	}
 
+	Crawl struct {
+		// the period (in seconds) in between "queue size" logs. if set to zero
+		// (default) those logs will be disabled.
+		QueueStatusLogPeriod int
+	}
+
 	Blacklist struct {
 		Domains  []string
 		Prefixes []string
