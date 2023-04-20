@@ -501,8 +501,8 @@ loop:
 	log.Println("[crawl][coord] Exited.")
 }
 
-func getDueUrls(c chan<- string, done chan bool) {
-	rows, err := Db.Query(`
+func getDueUrls(ctx context.Context, c chan<- string) {
+	rows, err := Db.QueryContext(ctx, `
 select url from urls u
 left join hosts h on u.hostname = h.hostname
 where not banned and (h.slowdown_until is null or h.slowdown_until < now()) and
@@ -516,18 +516,22 @@ where not banned and (h.slowdown_until is null or h.slowdown_until < now()) and
 loop:
 	for rows.Next() {
 		var url string
-		rows.Scan(&url)
+		err = rows.Scan(&url)
+		if errors.Is(err, context.Canceled) {
+			break
+		}
+		utils.PanicOnErr(err)
 
 		select {
 		case c <- url:
-		case <-done:
+		case <-ctx.Done():
 			break loop
 		}
 	}
 	close(c)
 }
 
-func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (prefixes []string, err error) {
+func fetchRobotsRules(ctx context.Context, u *url.URL, client *gemini.Client, visitorId string) (prefixes []string, err error) {
 	prefixes = make([]string, 0)
 
 	robotsUrl, err := url.Parse("gemini://" + u.Host + "/robots.txt")
@@ -535,7 +539,7 @@ func fetchRobotsRules(u *url.URL, client *gemini.Client, visitorId string) (pref
 		return
 	}
 
-	body, code, meta, finalUrl, err := readGemini(context.Background(), client, robotsUrl, visitorId)
+	body, code, meta, finalUrl, err := readGemini(ctx, client, robotsUrl, visitorId)
 	if err != nil {
 		return
 	}
@@ -722,7 +726,7 @@ func seeder(output chan<- string, visitResults chan VisitResult, done chan bool,
 		err        error
 	}
 	robotsCache := map[string]RobotsRecord{}
-	getOrFetchRobotsPrefixes := func(u *url.URL) (results []string, err error) {
+	getOrFetchRobotsPrefixes := func(ctx context.Context, u *url.URL) (results []string, err error) {
 		hit, ok := robotsCache[u.Host]
 		if ok && hit.validUntil.Before(time.Now()) {
 			results = hit.prefixes
@@ -744,9 +748,11 @@ func seeder(output chan<- string, visitResults chan VisitResult, done chan bool,
 		}
 		err = nil
 
-		results, err = fetchRobotsRules(u, client, "seeder")
+		results, err = fetchRobotsRules(ctx, u, client, "seeder")
 		var slowdownErr *GeminiSlowdownError
-		if errors.As(err, &slowdownErr) {
+		if errors.Is(err, context.Canceled) {
+			return
+		} else if errors.As(err, &slowdownErr) {
 			updateDbSlowDownError(VisitResult{
 				url:         u.String(),
 				meta:        slowdownErr.Meta,
@@ -765,11 +771,16 @@ func seeder(output chan<- string, visitResults chan VisitResult, done chan bool,
 		return
 	}
 
-	getDueDone := make(chan bool)
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	go func() {
+		<-done
+		cancelFunc()
+	}()
+
 loop:
 	for {
 		c := make(chan string)
-		go getDueUrls(c, getDueDone)
+		go getDueUrls(ctx, c)
 		for urlString := range c {
 			urlParsed, err := url.Parse(urlString)
 			if err != nil {
@@ -780,7 +791,10 @@ loop:
 				continue
 			}
 
-			robotsPrefixes, err := getOrFetchRobotsPrefixes(urlParsed)
+			robotsPrefixes, err := getOrFetchRobotsPrefixes(ctx, urlParsed)
+			if errors.Is(err, context.Canceled) {
+				break loop
+			}
 			if err != nil {
 				if err == ErrRobotsBackoff {
 					// don't report these so logs aren't spammed
@@ -799,7 +813,7 @@ loop:
 
 			select {
 			case output <- urlString:
-			case <-done:
+			case <-ctx.Done():
 				break loop
 			}
 		}
@@ -808,12 +822,11 @@ loop:
 		// urls to be added to the database.
 		select {
 		case <-time.After(10 * time.Second):
-		case <-done:
+		case <-ctx.Done():
 			break loop
 		}
 	}
 
-	getDueDone <- true
 	log.Println("[crawl][seeder] Exited.")
 }
 
