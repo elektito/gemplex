@@ -19,10 +19,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/a-h/gemini"
 	"git.sr.ht/~elektito/gemplex/pkg/gcrawler"
 	"git.sr.ht/~elektito/gemplex/pkg/gparse"
 	"git.sr.ht/~elektito/gemplex/pkg/utils"
+	"github.com/a-h/gemini"
 )
 
 const (
@@ -632,13 +632,13 @@ where hostname = $1`
 	}
 	utils.PanicOnErr(err)
 
-	if !prefixesStr.Valid {
-		err = fmt.Errorf("No prefixes available")
+	if nextTryTime.Time.After(time.Now()) {
+		err = ErrRobotsBackoff
 		return
 	}
 
-	if nextTryTime.Time.After(time.Now()) {
-		err = ErrRobotsBackoff
+	if !prefixesStr.Valid {
+		err = fmt.Errorf("No prefixes available")
 		return
 	}
 
