@@ -120,8 +120,7 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 			}
 			if !inPre {
 				preText = ""
-			}
-			if inPre {
+			} else {
 				// we're trying not to index ascii art, but do index normal text
 				// in a pre block
 				if looksLikeText(preText) {
