@@ -17,10 +17,10 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"git.sr.ht/~elektito/gemplex/pkg/config"
 	"git.sr.ht/~elektito/gemplex/pkg/gsearch"
 	"git.sr.ht/~elektito/gemplex/pkg/utils"
+	"github.com/dustin/go-humanize"
 )
 
 type Params struct {
@@ -153,11 +153,11 @@ func renderResults(resp gsearch.SearchResponse, req gsearch.SearchRequest) []byt
 * urank: {{ .UrlRank }}
 * relevance: {{ .Relevance }}
 {{- end }}
-{{ .Snippet -}}
+> {{ .Snippet -}}
 {{ end }}
 
 {{- define "Results" }}
-  {{ range . }}
+  {{- range . }}
     {{ template "SingleResult" . -}}
   {{ end}}
 {{ end }}
