@@ -830,6 +830,59 @@ loop:
 	log.Println("[crawl][seeder] Exited.")
 }
 
+func deleteDanglingUrls(ctx context.Context) (err error) {
+	start := time.Now()
+
+	tx, err := Db.BeginTx(ctx, nil)
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `
+create temp table ids on commit drop as
+    select id from urls
+    where not exists (select 1 from links where dst_url_id = urls.id) and
+          error is not null and
+          retry_time >= '1 month'
+`)
+	if err != nil {
+		return
+	}
+
+	result, err := tx.ExecContext(ctx, `delete from links where src_url_id in (select id from ids)`)
+	if err != nil {
+		return
+	}
+
+	affectedLinks, err := result.RowsAffected()
+	utils.PanicOnErr(err)
+
+	result, err = tx.ExecContext(ctx, `delete from urls where id in (select id from ids)`)
+	if err != nil {
+		return
+	}
+
+	affectedUrls, err := result.RowsAffected()
+	utils.PanicOnErr(err)
+
+	err = tx.Commit()
+	if err != nil {
+		return
+	}
+
+	end := time.Now()
+	elapsed := end.Sub(start).Round(time.Millisecond)
+
+	if affectedUrls == 0 {
+		log.Printf("[crawl][cleaner] Did not find any dangling urls (query took %s).\n", elapsed)
+	} else {
+		log.Printf("[crawl][cleaner] Deleted %d dangling urls with %d links in %s.\n", affectedUrls, affectedLinks, elapsed)
+	}
+
+	return
+}
+
 func cleaner(done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -844,6 +897,15 @@ func cleaner(done chan bool, wg *sync.WaitGroup) {
 
 loop:
 	for {
+		// remove urls that are not linked from any other page, and have been
+		// erroring out for a while.
+		err := deleteDanglingUrls(ctx)
+		if ctx.Err() == context.Canceled {
+			break
+		}
+		utils.PanicOnErr(err)
+
+		// remove contents that are not referenced by any urls
 		start := time.Now()
 		result, err := Db.ExecContext(ctx, `
 delete from contents c
@@ -861,7 +923,7 @@ where not exists (
 		if affected > 0 {
 			log.Printf("[crawl][cleaner] Removed %d dangling objects from contents table in %s.\n", affected, elapsed)
 		} else {
-			log.Printf("[crawl][cleaner] No dangling found objects in contents table (query took %s)\n", elapsed)
+			log.Printf("[crawl][cleaner] No dangling objects found in contents table (query took %s)\n", elapsed)
 		}
 
 		select {
