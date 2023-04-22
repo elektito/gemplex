@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
 	"database/sql"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"net/url"
@@ -11,6 +13,7 @@ import (
 	"path"
 	"strings"
 	"syscall"
+	"time"
 
 	"git.sr.ht/~elektito/gemplex/pkg/config"
 	"git.sr.ht/~elektito/gemplex/pkg/db"
@@ -53,6 +56,11 @@ func init() {
 			Info:       "Update pageranks in the database.",
 			ShortUsage: "",
 			Handler:    handlePageRankCommand,
+		},
+		"reimg": {
+			Info:       "Update images (ascii art) table.",
+			ShortUsage: "",
+			Handler:    handleReImgCommand,
 		},
 		"reparse": {
 			Info:       "Re-parse all pages in db, re-calculate columns we get from parsing, and write the results back to db.",
@@ -409,6 +417,81 @@ func handleUrlInfoCommand(cfg *config.Config, args []string) {
 			}
 		}
 	}
+}
+
+func handleReImgCommand(cfg *config.Config, args []string) {
+	db, err := sql.Open("postgres", cfg.GetDbConnStr())
+	utils.PanicOnErr(err)
+	defer db.Close()
+
+	rows, err := db.Query(`
+select c.id, c.content, c.hash, c.content_type, c.fetch_time, u.url
+from contents c
+join urls u on u.content_id=c.id
+`)
+	utils.PanicOnErr(err)
+	defer rows.Close()
+
+	type Record struct {
+		image       string
+		alt         string
+		fetchTime   time.Time
+		url         string
+		contentHash string
+	}
+	var records []Record
+
+	i := 0
+	for rows.Next() {
+		var cid int64
+		var content []byte
+		var fetchTime time.Time
+		var ustr string
+		var ct string
+		var contentHash string
+		err = rows.Scan(&cid, &content, &contentHash, &ct, &fetchTime, &ustr)
+		utils.PanicOnErr(err)
+
+		u, err := url.Parse(ustr)
+		utils.PanicOnErr(err)
+
+		page, err := gparse.ParsePage(content, u, ct)
+		if err != nil {
+			continue
+		}
+
+		for _, img := range page.Images {
+			// fmt.Println("====", cid, img.AltText, ustr)
+			// fmt.Println(img.Value)
+			records = append(records, Record{
+				image:       img.Value,
+				alt:         img.AltText,
+				url:         ustr,
+				fetchTime:   fetchTime,
+				contentHash: contentHash,
+			})
+		}
+
+		i++
+		if i%1000 == 0 {
+			fmt.Println("Progress:", i)
+		}
+	}
+
+	fmt.Printf("Writing %d image(s) to database...\n", len(records))
+	for _, rec := range records {
+		hashBytes := md5.Sum([]byte(rec.image))
+		imgHash := hex.EncodeToString(hashBytes[:])
+		_, err := db.Exec(`
+insert into images (image_hash, content_hash, image, alt, fetch_time, url)
+values ($1, $2, $3, $4, $5, $6)
+on conflict
+do nothing
+`, imgHash, rec.contentHash, rec.image, rec.alt, rec.fetchTime, rec.url)
+		utils.PanicOnErr(err)
+	}
+
+	fmt.Println("Done.")
 }
 
 func handleReparseCommand(cfg *config.Config, args []string) {

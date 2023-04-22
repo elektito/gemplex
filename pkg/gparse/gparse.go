@@ -19,7 +19,9 @@ import (
 )
 
 const (
-	maxTitleLength = 72
+	maxTitleLength   = 72
+	minAsciiArtSize  = 64
+	minAsciiArtLines = 3
 )
 
 type Link struct {
@@ -32,6 +34,11 @@ type Heading struct {
 	Text  string
 }
 
+type Image struct {
+	AltText string
+	Value   string
+}
+
 type Page struct {
 	Text     string
 	Links    []Link
@@ -39,6 +46,7 @@ type Page struct {
 	Title    string
 	Lang     string
 	Kind     string
+	Images   []Image
 }
 
 var (
@@ -51,6 +59,7 @@ var (
 	newlineSeqRe     = regexp.MustCompile(`(?m)\n{2,}`)
 	allWhitespaceRe  = regexp.MustCompile(`^\s+$`)
 	ansiSeqRe        = regexp.MustCompile("[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))") // from: https://github.com/acarl005/stripansi/blob/master/stripansi.go
+	gitSummaryRe     = regexp.MustCompile(`\s*[MAD]\s+(.+)\s+\|\s+\d+\s+(\++-+|-+|\++)\s*`)
 )
 
 func ParsePlain(text string) (result Page) {
@@ -108,23 +117,39 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 	firstLine := ""
 	inPre := false
 	preText := ""
+	preAll := ""
+	preLineCount := 0
+	altText := ""
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		line = strings.TrimRight(line, " ")
 
 		matches := preRe.FindStringSubmatch(line)
 		if len(matches) > 0 {
-			if !inPre && matches[1] != "" {
-				altText := matches[1]
-				s.WriteString(altText + "\n")
-			}
 			if !inPre {
+				altText = matches[1]
+				if altText != "" {
+					s.WriteString(altText + "\n")
+				}
+
+				preAll = ""
 				preText = ""
+				preLineCount = 0
 			} else {
 				// we're trying not to index ascii art, but do index normal text
 				// in a pre block
 				if looksLikeText(preText) {
 					s.WriteString(preText)
+				}
+
+				// add ascii art "images"
+				if len(preAll) >= minAsciiArtSize && preLineCount >= minAsciiArtLines && isAsciiArt(preAll) {
+					preAll = ansiSeqRe.ReplaceAllLiteralString(preAll, "")
+					preAll = strings.Trim(preAll, "\r\n")
+					result.Images = append(result.Images, Image{
+						AltText: altText,
+						Value:   preAll,
+					})
 				}
 			}
 			inPre = !inPre
@@ -132,6 +157,8 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 		}
 
 		if inPre {
+			preLineCount++
+			preAll += line + "\n"
 			if isMostlyAlphanumeric(line) {
 				preText += line + "\n"
 			}
@@ -371,19 +398,67 @@ func looksLikeText(s string) bool {
 	return true
 }
 
-func isMostlyAlphanumeric(s string) bool {
-	if s == "" {
-		return false
-	}
-
-	n := 0
+func classifyRunes(s string) (alphaNum int, space int, rest int) {
 	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			n += 1
+		switch {
+		case unicode.IsSpace(r):
+			space++
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			alphaNum++
+		default:
+			rest++
 		}
 	}
 
-	return float64(n)/float64(len(s)) > 0.6
+	return
+}
+
+func isMostlyAlphanumeric(s string) bool {
+	alphaNum, space, _ := classifyRunes(s)
+	nonSpace := len(s) - space
+	if nonSpace == 0 {
+		return false
+	}
+
+	return float64(alphaNum)/float64(nonSpace) > 0.6
+}
+
+func isAsciiArt(s string) bool {
+	_, space, rest := classifyRunes(s)
+	nonSpace := len(s) - space
+	if nonSpace == 0 {
+		return false
+	}
+
+	if float64(rest)/float64(nonSpace) < 0.75 {
+		return false
+	}
+
+	tableSepRe := regexp.MustCompile(`^\s*[\-+|]+\s*$`)
+	tableRowRe := regexp.MustCompile(`^\s*\|.*\|\s*$`)
+
+	lines := strings.Split(s, "\n")
+	tableSepLines := 0
+	tableRowLines := 0
+	for _, line := range lines {
+		// exclude git summaries, like 'M README.md    | 5 +++--'
+		if gitSummaryRe.MatchString(line) {
+			return false
+		}
+
+		// also exclude tables
+		if tableSepRe.MatchString(line) {
+			tableSepLines++
+		} else if tableRowRe.MatchString(line) {
+			tableRowLines++
+		}
+
+		if tableSepLines >= 2 && tableRowLines >= 1 {
+			return false
+		}
+	}
+
+	return true
 }
 
 func convertToString(body []byte, contentType string) (s string, err error) {

@@ -287,6 +287,19 @@ func updateDbSuccessfulVisit(r VisitResult) {
 		panic(err)
 	}
 
+	for _, img := range r.page.Images {
+		imgHash := calcContentHash([]byte(img.Value))
+		fmt.Println("Insert:", imgHash)
+		fmt.Println(img.Value)
+		_, err = tx.Exec(`
+insert into images (image_hash, image, alt, content_hash, url, fetch_time)
+values ($1, $2, $3, $4, $5, $6)
+on conflict (image_hash)
+do nothing
+`, imgHash, img.Value, img.AltText, contentHash, r.url, r.visitTime)
+		utils.PanicOnErr(err)
+	}
+
 	var urlId int64
 	err = tx.QueryRow(
 		`update urls set
