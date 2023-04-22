@@ -128,6 +128,7 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 		if len(matches) > 0 {
 			if !inPre {
 				altText = matches[1]
+				altText = strings.TrimSpace(altText)
 				if altText != "" {
 					s.WriteString(altText + "\n")
 				}
@@ -158,6 +159,7 @@ func ParseGemtext(text string, base *url.URL) (result Page) {
 
 		if inPre {
 			preLineCount++
+			line = strings.TrimRight(line, "\r")
 			preAll += line + "\n"
 			if isMostlyAlphanumeric(line) {
 				preText += line + "\n"
