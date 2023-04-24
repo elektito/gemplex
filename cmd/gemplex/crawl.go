@@ -69,7 +69,6 @@ func errGeminiSlowdown(meta string) *GeminiSlowdownError {
 var _ error = (*GeminiSlowdownError)(nil)
 
 var ErrRobotsBackoff = fmt.Errorf("Backing off from fetching robots.txt")
-var Db *sql.DB
 
 func readGemini(ctx context.Context, client *gemini.Client, u *url.URL, visitorId string) (body []byte, code int, meta string, finalUrl *url.URL, err error) {
 	redirs := 0
@@ -985,13 +984,6 @@ func dumpCrawlerState(filename string, nprocs int, urls [][]string) {
 
 func crawl(done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
-
-	// open (and check) database for all workers to use
-	var err error
-	Db, err = sql.Open("postgres", Config.GetDbConnStr())
-	utils.PanicOnErr(err)
-	err = Db.Ping()
-	utils.PanicOnErr(err)
 
 	nprocs := 500
 

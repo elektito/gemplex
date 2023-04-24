@@ -14,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"text/template"
 	"time"
 
@@ -82,6 +83,147 @@ func cgi(r io.Reader, w io.Writer, params Params) {
 		return
 	}
 
+	switch {
+	case strings.HasPrefix(u.Path, "/search"):
+		fallthrough
+	case strings.HasPrefix(u.Path, "/v/search"):
+		handleSearch(u, r, w, params)
+	case strings.HasPrefix(u.Path, "/image/random"):
+		handleRandomImage(u, r, w, params)
+	case strings.HasPrefix(u.Path, "/image/perm/"):
+		handleImagePermalink(u, r, w, params)
+	default:
+		geminiHeader(w, 51, "Not found")
+	}
+}
+
+func handleRandomImage(u *url.URL, r io.Reader, w io.Writer, params Params) {
+	var req struct {
+		Type string `json:"t"`
+	}
+
+	var resp struct {
+		Url       string    `json:"url"`
+		Alt       string    `json:"alt"`
+		Image     string    `json:"image"`
+		FetchTime time.Time `json:"fetch_time"`
+		ImageId   string    `json:"image_id"`
+	}
+
+	conn, err := net.Dial("unix", params.SearchDaemonSocket)
+	if err != nil {
+		log.Println("Cannot connect to search backend:", err)
+		cgiErr(w, "Cannot connect to search backend")
+		return
+	}
+
+	req.Type = "randimg"
+	err = json.NewEncoder(conn).Encode(req)
+	if err != nil {
+		log.Println("Error encoding search request:", err)
+		cgiErr(w, "Internal error")
+		return
+	}
+
+	err = json.NewDecoder(conn).Decode(&resp)
+	if err != nil {
+		cgiErr(w, "Internal error")
+		return
+	}
+
+	t := `# 🖼️ Gemplex - Random Gemini Image
+
+XXX {{ .Alt }}
+{{ .Image }}
+XXX
+
+{{ if .Alt }}Alt: {{ .Alt }}{{ else }}No alt text.{{ end }}
+
+Fetched at {{ .FetchTime }} from:
+=> {{ .Url }} Source
+
+=> /image/perm/{{ .ImageId }} ♾️ Permalink
+=> / 🏠 Gemplex Home
+`
+	t = strings.Replace(t, "XXX", "```", 2)
+	tmpl := template.Must(template.New("root").Parse(t))
+
+	var out bytes.Buffer
+	err = tmpl.Execute(&out, resp)
+	utils.PanicOnErr(err)
+
+	geminiHeader(w, 20, "text/gemini")
+	w.Write(out.Bytes())
+}
+
+func handleImagePermalink(u *url.URL, r io.Reader, w io.Writer, params Params) {
+	var req struct {
+		Type string `json:"t"`
+		Id   string `json:"id"`
+	}
+
+	var resp struct {
+		Url       string    `json:"url"`
+		Alt       string    `json:"alt"`
+		Image     string    `json:"image"`
+		FetchTime time.Time `json:"fetch_time"`
+		ImageId   string    `json:"image_id"`
+	}
+
+	conn, err := net.Dial("unix", params.SearchDaemonSocket)
+	if err != nil {
+		log.Println("Cannot connect to search backend:", err)
+		cgiErr(w, "Cannot connect to search backend")
+		return
+	}
+
+	req.Type = "getimg"
+	req.Id = u.Path[len("/image/perm/"):]
+	err = json.NewEncoder(conn).Encode(req)
+	if err != nil {
+		log.Println("Error encoding search request:", err)
+		cgiErr(w, "Internal error")
+		return
+	}
+
+	err = json.NewDecoder(conn).Decode(&resp)
+	if err != nil {
+		log.Println("Internal error:", err)
+		cgiErr(w, "Internal error")
+		return
+	}
+
+	if resp.ImageId == "" {
+		geminiHeader(w, 51, "Not found")
+		return
+	}
+
+	t := `# 🖼️ Gemplex - Random Gemini Image
+
+XXX {{ .Alt }}
+{{ .Image }}
+XXX
+
+{{ if .Alt }}Alt: {{ .Alt }}{{ else }}No alt text.{{ end }}
+
+Fetched at {{ .FetchTime }} from:
+=> {{ .Url }} Source
+
+=> /image/random 🔀 Random Image
+=> / 🏠 Gemplex Home
+`
+	t = strings.Replace(t, "XXX", "```", 2)
+	tmpl := template.Must(template.New("root").Parse(t))
+
+	var out bytes.Buffer
+	err = tmpl.Execute(&out, resp)
+	utils.PanicOnErr(err)
+
+	geminiHeader(w, 20, "text/gemini")
+	w.Write(out.Bytes())
+}
+
+func handleSearch(u *url.URL, r io.Reader, w io.Writer, params Params) {
 	if u.RawQuery == "" {
 		geminiHeader(w, 10, "Search query")
 		return
@@ -95,6 +237,7 @@ func cgi(r io.Reader, w io.Writer, params Params) {
 		geminiHeader(w, 59, "Bad URL")
 		return
 	} else if err != nil {
+		log.Println("Internal error:", err)
 		cgiErr(w, "Internal error")
 		return
 	}
@@ -116,6 +259,7 @@ func cgi(r io.Reader, w io.Writer, params Params) {
 	var resp gsearch.SearchResponse
 	err = json.NewDecoder(conn).Decode(&resp)
 	if err != nil {
+		log.Println("Internal error:", err)
 		cgiErr(w, "Internal error")
 		return
 	}
@@ -250,6 +394,7 @@ func parseSearchRequest(u *url.URL) (req gsearch.SearchRequest, err error) {
 	}
 
 	// default value
+	req.Type = "search"
 	req.Page = 1
 
 	for i, name := range re.SubexpNames() {

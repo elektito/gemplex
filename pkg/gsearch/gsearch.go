@@ -41,6 +41,9 @@ type RankedSort struct {
 }
 
 type SearchRequest struct {
+	// for search requests, this should be "search"
+	Type string `json:"t"`
+
 	Query          string `json:"q"`
 	Page           int    `json:"page,omitempty"`
 	HighlightStyle string `json:"-"`

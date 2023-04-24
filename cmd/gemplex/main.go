@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -14,10 +15,12 @@ import (
 
 	"git.sr.ht/~elektito/gemplex/pkg/config"
 	"git.sr.ht/~elektito/gemplex/pkg/gcrawler"
+	"git.sr.ht/~elektito/gemplex/pkg/utils"
 )
 
 var Config *config.Config
 var CrawlerStateFile *string
+var Db *sql.DB
 
 func main() {
 	configFile := flag.String("config", "", "config file")
@@ -30,6 +33,14 @@ func main() {
 	flag.Parse()
 
 	Config = config.LoadConfig(*configFile)
+
+	// open (and check) database for all workers to use
+	var err error
+	Db, err = sql.Open("postgres", Config.GetDbConnStr())
+	utils.PanicOnErr(err)
+	err = Db.Ping()
+	utils.PanicOnErr(err)
+
 	updateBlacklist()
 
 	var cmds []string

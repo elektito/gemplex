@@ -8,10 +8,15 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"git.sr.ht/~elektito/gemplex/pkg/gsearch"
 	"git.sr.ht/~elektito/gemplex/pkg/utils"
 )
+
+type TypedRequest struct {
+	Type string `json:"t"`
+}
 
 func search(done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -59,31 +64,116 @@ func handleConn(conn net.Conn) {
 		return
 	}
 
+	reqLine := scanner.Bytes()
 	log.Println("Request:", scanner.Text())
 
-	var req gsearch.SearchRequest
-	req.Page = 1
-	err := json.Unmarshal(scanner.Bytes(), &req)
+	var req TypedRequest
+	req.Type = "search"
+	err := json.Unmarshal(reqLine, &req)
 	if err != nil {
-		conn.Write(errorResponse("bad request"))
+		conn.Write([]byte("bad request"))
 		return
 	}
 
-	if req.Query == "" {
-		conn.Write(errorResponse("no query"))
+	var resp []byte
+	switch req.Type {
+	case "search":
+		resp = handleSearchRequest(reqLine)
+	case "randimg":
+		resp = handleRandImgRequest(reqLine)
+	case "getimg":
+		resp = handleGetImgRequest(reqLine)
+	default:
+		resp = errorResponse("unknown request type")
 		return
+	}
+
+	resp = append(resp, byte('\n'))
+	conn.Write(resp)
+}
+
+func handleSearchRequest(reqLine []byte) []byte {
+	var req gsearch.SearchRequest
+	req.Page = 1
+	err := json.Unmarshal(reqLine, &req)
+	if err != nil {
+		return errorResponse("bad request")
+	}
+
+	if req.Query == "" {
+		return errorResponse("no query")
 	}
 
 	resp, err := gsearch.Search(req, idx)
 	if err != nil {
-		conn.Write(errorResponse(err.Error()))
-		return
+		return errorResponse(err.Error())
 	}
 
-	err = json.NewEncoder(conn).Encode(resp)
+	jsonResp, err := json.Marshal(resp)
 	if err != nil {
-		conn.Write(errorResponse(fmt.Sprintf("Error marshalling results: %s", err)))
+		return errorResponse(fmt.Sprintf("Error marshalling results: %s", err))
 	}
+
+	return jsonResp
+}
+
+func handleRandImgRequest(reqLine []byte) []byte {
+	var resp struct {
+		Url       string    `json:"url"`
+		Alt       string    `json:"alt"`
+		Image     string    `json:"image"`
+		FetchTime time.Time `json:"fetch_time"`
+		ImageId   string    `json:"image_id"`
+	}
+
+	row := Db.QueryRow(`
+select * from
+	(select url, alt, image_hash, image, fetch_time from images tablesample bernoulli(1)) s
+order by random() limit 1;
+`)
+	err := row.Scan(&resp.Url, &resp.Alt, &resp.ImageId, &resp.Image, &resp.FetchTime)
+	if err != nil {
+		return errorResponse(fmt.Sprintf("Database error: %s", err))
+	}
+
+	jsonResp, err := json.Marshal(resp)
+	if err != nil {
+		return errorResponse(fmt.Sprintf("Error marshalling results: %s", err))
+	}
+
+	return jsonResp
+}
+
+func handleGetImgRequest(reqLine []byte) []byte {
+	var req struct {
+		Id string `json:"id"`
+	}
+
+	var resp struct {
+		Url       string    `json:"url"`
+		Alt       string    `json:"alt"`
+		Image     string    `json:"image"`
+		FetchTime time.Time `json:"fetch_time"`
+		ImageId   string    `json:"image_id"`
+	}
+
+	err := json.Unmarshal(reqLine, &req)
+	if err != nil {
+		return errorResponse("bad request")
+	}
+
+	row := Db.QueryRow(`select url, alt, image_hash, image, fetch_time from images where image_hash = $1`, req.Id)
+	err = row.Scan(&resp.Url, &resp.Alt, &resp.ImageId, &resp.Image, &resp.FetchTime)
+	if err != nil {
+		return errorResponse(fmt.Sprintf("Database error: %s", err))
+	}
+
+	jsonResp, err := json.Marshal(resp)
+	if err != nil {
+		return errorResponse(fmt.Sprintf("Error marshalling results: %s", err))
+	}
+
+	return jsonResp
 }
 
 func errorResponse(msg string) (resp []byte) {
