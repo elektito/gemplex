@@ -2,6 +2,10 @@
 
 => /search Search Geminispace
 
+Also:
+=> /image/search ASCII art search
+=> /image/random Show a random ASCII art
+
 ## About
 Gemplex is an experimental (like all things Gemini) Search Engine for Gemini written in Go. You can find the source code here:
 
