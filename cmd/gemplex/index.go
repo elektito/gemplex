@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -8,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/blevesearch/bleve/v2"
 	"git.sr.ht/~elektito/gemplex/pkg/gsearch"
 	"git.sr.ht/~elektito/gemplex/pkg/utils"
+	"github.com/blevesearch/bleve/v2"
 )
 
 // used to make sure loadInitialIndex, which is called by both search and index
@@ -29,26 +30,19 @@ var curIdx bleve.Index
 func index(done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	loadIndexOnce.Do(func() { loadInitialIndex(done) })
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	loadIndexOnce.Do(func() { loadInitialIndex(ctx) })
 
 	loopDone := make(chan bool)
-	indexDbDone := make(chan bool)
-	indexing := false
 	go func() {
 		<-done
-
-		if indexing {
-			indexDbDone <- true
-		}
-
+		cancelFunc()
 		loopDone <- true
 	}()
 
 loop:
 	for {
-		indexing = true
-		indexDb(indexDbDone)
-		indexing = false
+		indexDb(ctx)
 
 		select {
 		case <-time.After(1 * time.Hour):
@@ -60,7 +54,7 @@ loop:
 	log.Println("[index] Done.")
 }
 
-func loadInitialIndex(done chan bool) {
+func loadInitialIndex(ctx context.Context) {
 	pingFile := path.Join(Config.Index.Path, "ping.idx")
 	pongFile := path.Join(Config.Index.Path, "pong.idx")
 
@@ -139,14 +133,17 @@ func loadInitialIndex(done chan bool) {
 		curIdx, err = gsearch.NewIndex(pingFile, "ping")
 		utils.PanicOnErr(err)
 
-		err = gsearch.IndexDb(curIdx, Config, done)
+		err = gsearch.IndexDb(ctx, curIdx, Config)
+		if ctx.Err() == context.Canceled {
+			return
+		}
 		utils.PanicOnErr(err)
 
 		idx.Add(curIdx)
 	}
 }
 
-func indexDb(done chan bool) {
+func indexDb(ctx context.Context) {
 	pingFile := path.Join(Config.Index.Path, "ping.idx")
 	pongFile := path.Join(Config.Index.Path, "pong.idx")
 
@@ -168,7 +165,10 @@ func indexDb(done chan bool) {
 	newIdx, err := gsearch.NewIndex(newIdxFile, newIdxName)
 	utils.PanicOnErr(err)
 
-	err = gsearch.IndexDb(newIdx, Config, done)
+	err = gsearch.IndexDb(ctx, newIdx, Config)
+	if ctx.Err() == context.Canceled {
+		return
+	}
 	utils.PanicOnErr(err)
 
 	idx.Swap([]bleve.Index{newIdx}, []bleve.Index{curIdx})

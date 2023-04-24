@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -21,7 +22,8 @@ type TypedRequest struct {
 func search(done chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	loadIndexOnce.Do(func() { loadInitialIndex(done) })
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	loadIndexOnce.Do(func() { loadInitialIndex(ctx) })
 
 	cleanupUnixSocket()
 	listener, err := net.Listen("unix", Config.Search.UnixSocketPath)
@@ -30,6 +32,7 @@ func search(done chan bool, wg *sync.WaitGroup) {
 	closing := false
 	go func() {
 		<-done
+		cancelFunc()
 		closing = true
 		listener.Close()
 	}()
@@ -83,6 +86,8 @@ func handleConn(conn net.Conn) {
 		resp = handleRandImgRequest(reqLine)
 	case "getimg":
 		resp = handleGetImgRequest(reqLine)
+	case "searchimg":
+		resp = handleSearchImgRequest(reqLine)
 	default:
 		resp = errorResponse("unknown request type")
 		return
@@ -93,7 +98,7 @@ func handleConn(conn net.Conn) {
 }
 
 func handleSearchRequest(reqLine []byte) []byte {
-	var req gsearch.SearchRequest
+	var req gsearch.PageSearchRequest
 	req.Page = 1
 	err := json.Unmarshal(reqLine, &req)
 	if err != nil {
@@ -104,7 +109,7 @@ func handleSearchRequest(reqLine []byte) []byte {
 		return errorResponse("no query")
 	}
 
-	resp, err := gsearch.Search(req, idx)
+	resp, err := gsearch.SearchPages(req, idx)
 	if err != nil {
 		return errorResponse(err.Error())
 	}
@@ -166,6 +171,31 @@ func handleGetImgRequest(reqLine []byte) []byte {
 	err = row.Scan(&resp.Url, &resp.Alt, &resp.ImageId, &resp.Image, &resp.FetchTime)
 	if err != nil {
 		return errorResponse(fmt.Sprintf("Database error: %s", err))
+	}
+
+	jsonResp, err := json.Marshal(resp)
+	if err != nil {
+		return errorResponse(fmt.Sprintf("Error marshalling results: %s", err))
+	}
+
+	return jsonResp
+}
+
+func handleSearchImgRequest(reqLine []byte) []byte {
+	var req gsearch.ImageSearchRequest
+	req.Page = 1
+	err := json.Unmarshal(reqLine, &req)
+	if err != nil {
+		return errorResponse("bad request")
+	}
+
+	if req.Query == "" {
+		return errorResponse("no query")
+	}
+
+	resp, err := gsearch.SearchImages(req, idx)
+	if err != nil {
+		return errorResponse(err.Error())
 	}
 
 	jsonResp, err := json.Marshal(resp)

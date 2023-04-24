@@ -1,6 +1,7 @@
 package gsearch
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -22,7 +23,7 @@ import (
 
 const PageSize = 15
 
-type Doc struct {
+type PageDoc struct {
 	Title       string
 	Content     string
 	Lang        string
@@ -34,14 +35,21 @@ type Doc struct {
 	ContentSize uint64
 }
 
+type ImageDoc struct {
+	AltText   string
+	Image     string
+	SourceUrl string
+	FetchTime time.Time
+}
+
 type RankedSort struct {
 	desc          bool
 	pageRankBytes []byte
 	hostRankBytes []byte
 }
 
-type SearchRequest struct {
-	// for search requests, this should be "search"
+type PageSearchRequest struct {
+	// this should be set to "search"
 	Type string `json:"t"`
 
 	Query          string `json:"q"`
@@ -50,7 +58,16 @@ type SearchRequest struct {
 	Verbose        bool   `json:"-"`
 }
 
-type SearchResult struct {
+type ImageSearchRequest struct {
+	// this should be set to "searchimg"
+	Type string `json:"t"`
+
+	Query          string `json:"q"`
+	Page           int    `json:"page,omitempty"`
+	HighlightStyle string `json:"-"`
+}
+
+type PageSearchResult struct {
 	Url         string  `json:"url"`
 	Title       string  `json:"title"`
 	Snippet     string  `json:"snippet"`
@@ -64,10 +81,28 @@ type SearchResult struct {
 	Hostname string `json:"-"`
 }
 
-type SearchResponse struct {
-	TotalResults uint64         `json:"n"`
-	Results      []SearchResult `json:"results"`
-	Duration     time.Duration  `json:"duration"`
+type ImageSearchResult struct {
+	ImageHash string    `json:"image_id"`
+	Image     string    `json:"image"`
+	AltText   string    `json:"alt"`
+	SourceUrl string    `json:"url"`
+	FetchTime time.Time `json:"fetch_time"`
+	Relevance float64   `json:"score"`
+}
+
+type PageSearchResponse struct {
+	TotalResults uint64             `json:"n"`
+	Results      []PageSearchResult `json:"results"`
+	Duration     time.Duration      `json:"duration"`
+
+	// used by the search daemon and cgi
+	Err string `json:"err,omitempty"`
+}
+
+type ImageSearchResponse struct {
+	TotalResults uint64              `json:"n"`
+	Results      []ImageSearchResult `json:"results"`
+	Duration     time.Duration       `json:"duration"`
 
 	// used by the search daemon and cgi
 	Err string `json:"err,omitempty"`
@@ -141,53 +176,72 @@ func (so *RankedSort) Copy() search.SearchSort {
 func NewIndex(path string, name string) (idx bleve.Index, err error) {
 	idxMapping := bleve.NewIndexMapping()
 
-	docMapping := bleve.NewDocumentMapping()
+	pageMapping := bleve.NewDocumentMapping()
 
 	titleFieldMapping := bleve.NewTextFieldMapping()
-	docMapping.AddFieldMappingsAt("Title", titleFieldMapping)
+	pageMapping.AddFieldMappingsAt("Title", titleFieldMapping)
 
 	contentFieldMapping := bleve.NewTextFieldMapping()
-	docMapping.AddFieldMappingsAt("Content", contentFieldMapping)
+	pageMapping.AddFieldMappingsAt("Content", contentFieldMapping)
 
 	langFieldMapping := bleve.NewKeywordFieldMapping()
 	langFieldMapping.IncludeInAll = false
 	langFieldMapping.IncludeTermVectors = false
-	docMapping.AddFieldMappingsAt("Lang", langFieldMapping)
+	pageMapping.AddFieldMappingsAt("Lang", langFieldMapping)
 
 	linksFieldMapping := bleve.NewTextFieldMapping()
-	docMapping.AddFieldMappingsAt("Links", linksFieldMapping)
+	pageMapping.AddFieldMappingsAt("Links", linksFieldMapping)
 
 	pageRankFieldMapping := bleve.NewNumericFieldMapping()
 	pageRankFieldMapping.Index = false
 	pageRankFieldMapping.IncludeInAll = false
 	pageRankFieldMapping.IncludeTermVectors = false
-	docMapping.AddFieldMappingsAt("PageRank", pageRankFieldMapping)
+	pageMapping.AddFieldMappingsAt("PageRank", pageRankFieldMapping)
 
 	hostRankFieldMapping := bleve.NewNumericFieldMapping()
 	hostRankFieldMapping.Index = false
 	pageRankFieldMapping.IncludeInAll = false
 	pageRankFieldMapping.IncludeTermVectors = false
-	docMapping.AddFieldMappingsAt("HostRank", hostRankFieldMapping)
+	pageMapping.AddFieldMappingsAt("HostRank", hostRankFieldMapping)
 
 	kindFieldMapping := bleve.NewTextFieldMapping()
 	kindFieldMapping.Index = true
 	kindFieldMapping.IncludeInAll = false
 	kindFieldMapping.IncludeTermVectors = false
-	docMapping.AddFieldMappingsAt("Kind", kindFieldMapping)
+	pageMapping.AddFieldMappingsAt("Kind", kindFieldMapping)
 
 	contentTypeFieldMapping := bleve.NewKeywordFieldMapping()
 	contentTypeFieldMapping.Index = true
 	contentTypeFieldMapping.IncludeInAll = false
 	contentTypeFieldMapping.IncludeTermVectors = false
-	docMapping.AddFieldMappingsAt("ContentType", contentTypeFieldMapping)
+	pageMapping.AddFieldMappingsAt("ContentType", contentTypeFieldMapping)
 
 	contentSizeFieldMapping := bleve.NewNumericFieldMapping()
 	contentSizeFieldMapping.Index = true
 	contentSizeFieldMapping.IncludeInAll = false
 	contentSizeFieldMapping.IncludeTermVectors = false
-	docMapping.AddFieldMappingsAt("ContentSize", contentSizeFieldMapping)
+	pageMapping.AddFieldMappingsAt("ContentSize", contentSizeFieldMapping)
 
-	idxMapping.AddDocumentMapping("Page", docMapping)
+	idxMapping.AddDocumentMapping("Page", pageMapping)
+
+	imgMapping := bleve.NewDocumentMapping()
+
+	altFieldMapping := bleve.NewTextFieldMapping()
+	imgMapping.AddFieldMappingsAt("AltText", altFieldMapping)
+
+	imageFieldMapping := bleve.NewTextFieldMapping()
+	imageFieldMapping.Store = true
+	imageFieldMapping.Index = false
+	imageFieldMapping.IncludeInAll = false
+	imageFieldMapping.IncludeTermVectors = false
+	imgMapping.AddFieldMappingsAt("Image", imageFieldMapping)
+
+	fetchTimeFieldMapping := bleve.NewDateTimeFieldMapping()
+	fetchTimeFieldMapping.IncludeInAll = false
+	fetchTimeFieldMapping.DateFormat = "dateTimeOptional"
+	imgMapping.AddFieldMappingsAt("FetchTime", fetchTimeFieldMapping)
+
+	idxMapping.AddDocumentMapping("Image", imgMapping)
 
 	idx, err = bleve.New(path, idxMapping)
 	if err != nil {
@@ -208,7 +262,25 @@ func OpenIndex(path string, name string) (idx bleve.Index, err error) {
 	return
 }
 
-func IndexDb(index bleve.Index, cfg *config.Config, done chan bool) (err error) {
+func IndexDb(ctx context.Context, index bleve.Index, cfg *config.Config) (err error) {
+	IndexPages(ctx, index, cfg)
+	if ctx.Err() == context.Canceled {
+		err = ctx.Err()
+		return
+	}
+
+	IndexImages(ctx, index, cfg)
+	if ctx.Err() == context.Canceled {
+		err = ctx.Err()
+		return
+	}
+
+	return
+}
+
+func IndexPages(ctx context.Context, index bleve.Index, cfg *config.Config) (err error) {
+	log.Println("Indexing pages...")
+
 	db, err := sql.Open("postgres", cfg.GetDbConnStr())
 	if err != nil {
 		return
@@ -238,7 +310,7 @@ where u.rank is not null and h.rank is not null
 	batch := index.NewBatch()
 loop:
 	for rows.Next() {
-		var doc Doc
+		var doc PageDoc
 		var links pq.StringArray
 		var urlStr string
 		var lang sql.NullString
@@ -282,7 +354,7 @@ loop:
 		}
 
 		select {
-		case <-done:
+		case <-ctx.Done():
 			break loop
 		default:
 		}
@@ -301,7 +373,64 @@ loop:
 	return
 }
 
-func Search(req SearchRequest, idx bleve.Index) (resp SearchResponse, err error) {
+func IndexImages(ctx context.Context, index bleve.Index, cfg *config.Config) (err error) {
+	log.Println("Indexing images...")
+
+	db, err := sql.Open("postgres", cfg.GetDbConnStr())
+	if err != nil {
+		return
+	}
+	defer db.Close()
+
+	q := `select url, image_hash, alt, image, fetch_time from images where alt != ''`
+	rows, err := db.Query(q)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	n := 1
+	batch := index.NewBatch()
+loop:
+	for rows.Next() {
+		var doc ImageDoc
+		var imageHash string
+		err = rows.Scan(&doc.SourceUrl, &imageHash, &doc.AltText, &doc.Image, &doc.FetchTime)
+		if err != nil {
+			return
+		}
+
+		batch.Index(imageHash, doc)
+		if batch.Size() >= cfg.Index.BatchSize {
+			err = index.Batch(batch)
+			if err != nil {
+				return
+			}
+			batch.Reset()
+			log.Printf("Indexing progress: %d pages indexed so far.\n", n)
+		}
+
+		select {
+		case <-ctx.Done():
+			break loop
+		default:
+		}
+
+		n++
+	}
+
+	if batch.Size() > 0 {
+		err = index.Batch(batch)
+		if err != nil {
+			return
+		}
+	}
+
+	log.Printf("Finished indexing: %d images indexed.\n", n)
+	return
+}
+
+func SearchPages(req PageSearchRequest, idx bleve.Index) (resp PageSearchResponse, err error) {
 	// sanity check, in case someone sends a zero-based page index
 	if req.Page < 1 {
 		err = fmt.Errorf("Invalid page number (needs to be greater than or equal to 1)")
@@ -369,7 +498,7 @@ func Search(req SearchRequest, idx bleve.Index) (resp SearchResponse, err error)
 		// cruicially, formatted lines are not rendered in clients that do that.
 		snippet = " " + strings.Replace(snippet, "\n", " ", -1)
 
-		result := SearchResult{
+		result := PageSearchResult{
 			Url:         r.ID,
 			Title:       r.Fields["Title"].(string),
 			Snippet:     snippet,
@@ -378,6 +507,57 @@ func Search(req SearchRequest, idx bleve.Index) (resp SearchResponse, err error)
 			Relevance:   r.Score,
 			ContentType: r.Fields["ContentType"].(string),
 			ContentSize: uint64(r.Fields["ContentSize"].(float64)),
+		}
+		resp.Results = append(resp.Results, result)
+	}
+
+	return
+}
+
+func SearchImages(req ImageSearchRequest, idx bleve.Index) (resp ImageSearchResponse, err error) {
+	// sanity check, in case someone sends a zero-based page index
+	if req.Page < 1 {
+		err = fmt.Errorf("Invalid page number (needs to be greater than or equal to 1)")
+		return
+	}
+
+	q := bleve.NewMatchQuery(req.Query)
+	q.SetField("AltText")
+
+	highlightStyle := req.HighlightStyle
+	if highlightStyle == "" {
+		highlightStyle = "gem"
+	}
+
+	s := bleve.NewSearchRequest(q)
+	s.Highlight = bleve.NewHighlightWithStyle(highlightStyle)
+	s.Fields = []string{"AltText", "Image", "FetchTime", "SourceUrl"}
+
+	s.Size = PageSize
+	s.From = (req.Page - 1) * s.Size
+
+	results, err := idx.Search(s)
+	if err != nil {
+		return
+	}
+
+	resp.TotalResults = results.Total
+	resp.Duration = results.Took
+
+	for _, r := range results.Hits {
+		fetchTimeStr := r.Fields["FetchTime"].(string)
+		fetchTime, err := time.Parse(time.RFC3339, fetchTimeStr)
+		if err != nil {
+			log.Println("WARNING: Could not parse datetime value stored in index.")
+		}
+
+		result := ImageSearchResult{
+			ImageHash: r.ID,
+			SourceUrl: r.Fields["SourceUrl"].(string),
+			Image:     r.Fields["Image"].(string),
+			FetchTime: fetchTime,
+			AltText:   r.Fields["AltText"].(string),
+			Relevance: r.Score,
 		}
 		resp.Results = append(resp.Results, result)
 	}

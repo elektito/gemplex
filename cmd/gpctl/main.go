@@ -309,7 +309,7 @@ func handleIndexCommand(cfg *config.Config, args []string) {
 	index, err := gsearch.NewIndex(indexDir, indexName)
 	utils.PanicOnErr(err)
 
-	err = gsearch.IndexDb(index, cfg, nil)
+	err = gsearch.IndexDb(context.Background(), index, cfg)
 	utils.PanicOnErr(err)
 }
 
