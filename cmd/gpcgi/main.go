@@ -141,7 +141,7 @@ XXX
 
 {{ if .Alt }}Alt: {{ .Alt }}{{ else }}No alt text.{{ end }}
 
-Fetched at {{ .FetchTime }} from:
+Fetched on {{ .FetchTime.Format "2006-01-02" }} from:
 => {{ .Url }} Source
 
 => /image/perm/{{ .ImageId }} ♾️ Permalink
@@ -208,7 +208,7 @@ XXX
 
 {{ if .Alt }}Alt: {{ .Alt }}{{ else }}No alt text.{{ end }}
 
-Fetched at {{ .FetchTime }} from:
+Fetched on {{ .FetchTime.Format "2006-01-02" }} from:
 => {{ .Url }} Source
 
 => /image/random 🔀 Random Image
@@ -444,7 +444,7 @@ func renderImageSearchResults(resp gsearch.ImageSearchResponse, req gsearch.Imag
 	t := `
 {{- define "SingleResult" }}
 => {{ permalink .ImageHash }} {{ .AltText }}
-* Fetched: {{ .FetchTime }} - Source: {{ urlhost .SourceUrl }}
+* Fetched: {{ .FetchTime.Format "2006-01-02" }} - {{ urlhost .SourceUrl }}
 XXX {{ .AltText }}
 {{ .Image }}
 XXX
