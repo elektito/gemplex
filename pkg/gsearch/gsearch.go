@@ -325,7 +325,7 @@ loop:
 		urlParsed, err = url.Parse(urlStr)
 		if err != nil {
 			log.Printf("WARNING: URL stored in db cannot be parsed: url=%s error=%s\n", urlStr, err)
-		} else if gcrawler.IsBlacklisted(urlStr, urlParsed) {
+		} else if gcrawler.IsBlacklisted(gcrawler.PreparedUrl{Parsed: urlParsed, NonParsed: urlStr}) {
 			continue
 		}
 

@@ -1,6 +1,7 @@
 package gcrawler
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 )
@@ -47,13 +48,27 @@ var blacklistedPrefixes = []string{
 	"gemini://gemlog.stargrave.org/?",
 }
 
-func IsBlacklisted(link string, parsedLink *url.URL) bool {
-	if _, ok := blacklistedDomains[parsedLink.Hostname()]; ok {
+// since we frequently need both the parsed and non-parsed form of the url,
+// we'll be passing this url around so we only need to parse once, and not have
+// to reassemble the parsed url either.
+type PreparedUrl struct {
+	Parsed    *url.URL
+	NonParsed string
+}
+
+func (u PreparedUrl) String() string {
+	return u.NonParsed
+}
+
+var _ fmt.Stringer = (*PreparedUrl)(nil)
+
+func IsBlacklisted(u PreparedUrl) bool {
+	if _, ok := blacklistedDomains[u.Parsed.Hostname()]; ok {
 		return true
 	}
 
 	for _, prefix := range blacklistedPrefixes {
-		if strings.HasPrefix(link, prefix) {
+		if strings.HasPrefix(u.String(), prefix) {
 			return true
 		}
 	}
