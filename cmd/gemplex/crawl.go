@@ -288,8 +288,6 @@ func updateDbSuccessfulVisit(r VisitResult) {
 
 	for _, img := range r.page.Images {
 		imgHash := calcContentHash([]byte(img.Value))
-		fmt.Println("Insert:", imgHash)
-		fmt.Println(img.Value)
 		_, err = tx.Exec(`
 insert into images (image_hash, image, alt, content_hash, url, fetch_time)
 values ($1, $2, $3, $4, $5, $6)
